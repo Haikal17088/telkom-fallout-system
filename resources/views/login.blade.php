@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="id">
 
 <head>
@@ -54,7 +54,8 @@
 
     display:grid;
 
-    grid-template-columns:56% 44%;
+    grid-template-columns: minmax(0, 56fr) minmax(0, 44fr);
+    grid-template-areas: "brand action";
 
     min-height:100vh;
   }
@@ -82,7 +83,10 @@
     overflow:hidden;
 
     isolation:isolate;
-  }
+    grid-area: brand;
+    min-width: 0;
+    min-height: 100vh;
+}
 
 
   .brand-photo{
@@ -315,7 +319,10 @@
     justify-content:center;
 
     padding:64px 72px;
-  }
+    grid-area: action;
+    min-width: 0;
+    min-height: 100vh;
+}
 
 
   .form-card{
@@ -659,9 +666,12 @@
     }
 
     body{
-      display:flex;
-      flex-direction:column;
-      min-height:100vh;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas:
+        "brand"
+        "action";
+      min-height: 100vh;
     }
 
     .brand-panel{

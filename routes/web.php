@@ -440,50 +440,17 @@ $buildRekapFallout = function (
                 }
             }
 
-            /* STATUS */
+                        /* STATUS: gunakan kolom RESOLVED/ESKALASI yang ditampilkan pada tabel */
             if ($filterStatus !== 'semua') {
-
-                $resolved = strtolower(
-                    trim(
-                        (string) (
-                            $row->resolved_eskalasi ?? ''
-                        )
-                    )
+                $rowStatus = strtolower(
+                    trim((string) ($row->resolved_eskalasi ?? ''))
                 );
+                $rowStatus = preg_replace('/[\s-]+/u', '_', $rowStatus);
 
-                $status = strtolower(
-                    trim(
-                        (string) (
-                            $row->status ?? ''
-                        )
-                    )
-                );
+                $selectedStatus = strtolower(trim((string) $filterStatus));
+                $selectedStatus = preg_replace('/[\s-]+/u', '_', $selectedStatus);
 
-                if (
-                    $filterStatus === 'resolved'
-                    && $resolved !== 'resolved'
-                ) {
-                    return false;
-                }
-
-                if (
-                    $filterStatus === 'cancel'
-                    && $status !== 'cancel'
-                ) {
-                    return false;
-                }
-
-                if (
-                    $filterStatus === 'eskalasi_dit'
-                    && $status !== 'eskalasi_dit'
-                ) {
-                    return false;
-                }
-
-                if (
-                    $filterStatus === 'close'
-                    && $status !== 'close'
-                ) {
+                if ($rowStatus !== $selectedStatus) {
                     return false;
                 }
             }
@@ -921,48 +888,16 @@ Route::get(
                     }
                 }
 
-                if ($status !== 'semua') {
-                    $resolved = strtolower(
-                        trim(
-                            (string) (
-                                $row->resolved_eskalasi ?? ''
-                            )
-                        )
+                                if ($status !== 'semua') {
+                    $rowStatus = strtolower(
+                        trim((string) ($row->resolved_eskalasi ?? ''))
                     );
+                    $rowStatus = preg_replace('/[\s-]+/u', '_', $rowStatus);
 
-                    $detail = strtolower(
-                        trim(
-                            (string) (
-                                $row->status ?? ''
-                            )
-                        )
-                    );
+                    $selectedStatus = strtolower(trim((string) $status));
+                    $selectedStatus = preg_replace('/[\s-]+/u', '_', $selectedStatus);
 
-                    if (
-                        $status === 'resolved'
-                        && $resolved !== 'resolved'
-                    ) {
-                        return false;
-                    }
-
-                    if (
-                        $status === 'cancel'
-                        && $detail !== 'cancel'
-                    ) {
-                        return false;
-                    }
-
-                    if (
-                        $status === 'eskalasi_dit'
-                        && $detail !== 'eskalasi_dit'
-                    ) {
-                        return false;
-                    }
-
-                    if (
-                        $status === 'close'
-                        && $detail !== 'close'
-                    ) {
+                    if ($rowStatus !== $selectedStatus) {
                         return false;
                     }
                 }
