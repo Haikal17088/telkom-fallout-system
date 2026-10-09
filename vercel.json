@@ -1,0 +1,22 @@
+{
+    "functions": {
+        "api/index.php": {
+            "runtime": "vercel-php@0.7.4",
+            "maxDuration": 60
+        }
+    },
+    "routes": [
+        {
+            "src": "/build/(.*)",
+            "dest": "/public/build/$1"
+        },
+        {
+            "src": "/(favicon\\.ico|robots\\.txt)",
+            "dest": "/public/$1"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "/api/index.php"
+        }
+    ]
+}
