@@ -346,6 +346,15 @@
            WITEL
            ===================================================== */
 
+        .dashboard-home-link{
+            width:100%;
+            margin:0 0 4px;
+        }
+
+        .dashboard-branch-label{
+            margin-top:5px;
+        }
+
         .witel-list{
 
             display:flex;
@@ -1854,7 +1863,22 @@
 
             @endphp
 
+            {{-- Tombol kembali ke dashboard utama; tetap terlihat di semua menu Witel. --}}
+            <a
+                href="{{ route('dashboard') }}"
+                class="nav-item dashboard-home-link {{ (!$activeWitel && !$activeMenu) ? 'active' : '' }}"
+                aria-current="{{ (!$activeWitel && !$activeMenu) ? 'page' : 'false' }}"
+            >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.7"/>
+                    <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.7"/>
+                    <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.7"/>
+                    <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.7"/>
+                </svg>
+                <span class="nav-text">Dashboard</span>
+            </a>
 
+            <div class="nav-label dashboard-branch-label">CABANG</div>
 
             @foreach (
                 $witels as $slug => $label
@@ -2658,55 +2682,13 @@
 
 
             {{-- =================================================
-                 BELUM PILIH MENU
+                 DASHBOARD OVERVIEW
+                 Ditampilkan saat /dashboard dibuka tanpa memilih menu sidebar.
                  ================================================= --}}
 
             @else
 
-
-                <div
-                    class="
-                        empty-state
-                        content-center
-                    "
-                >
-
-
-                    <div class="empty-icon">
-
-                        <svg
-                            width="22"
-                            height="22"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                        >
-
-                            <path
-                                d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
-                                stroke="#C8102E"
-                                stroke-width="1.8"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            />
-
-                        </svg>
-
-                    </div>
-
-
-                    <h2>
-                        Pilih Witel dan menu
-                    </h2>
-
-
-                    <p>
-                        Buka salah satu cabang di sidebar,
-                        lalu pilih menu untuk mulai.
-                    </p>
-
-
-                </div>
-
+                @include('partials.dashboard-overview')
 
             @endif
 

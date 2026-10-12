@@ -169,9 +169,26 @@
 
         */
 
-        $statusRe = strtoupper(
-            trim((string) ($r->resolved_eskalasi ?? ''))
-        );
+        $statusReRaw = trim((string) ($r->resolved_eskalasi ?? ''));
+
+        /*
+         * Normalisasi kategori berdasarkan kolom RESOLVED/ESKALASI
+         * yang benar-benar ditampilkan pada tabel. Spasi dan tanda
+         * hubung disamakan menjadi underscore agar nilai seperti
+         * "Eskalasi DIT" dan "ESKALASI_DIT" bisa difilter sama.
+         */
+        $statusReKey = strtolower($statusReRaw);
+        $statusReKey = preg_replace('/[\\s-]+/u', '_', $statusReKey);
+        $statusReKey = preg_replace('/_+/', '_', $statusReKey);
+        $statusRe = strtoupper($statusReKey);
+
+        $statusReDisplay = [
+            'resolved' => 'RESOLVED',
+            'eskalasi' => 'ESKALASI',
+            'cancel' => 'CANCEL',
+            'eskalasi_dit' => 'ESKALASI_DIT',
+            'close' => 'CLOSE',
+        ][$statusReKey] ?? ($statusReRaw !== '' ? strtoupper($statusReRaw) : '-');
 
 
         /*
@@ -235,42 +252,31 @@
 
         */
 
-        $rowStatus =
-            strtolower(
-                trim((string) ($r->status ?? ''))
-            );
+        $rowStatus = strtolower(
+            trim((string) ($r->status ?? ''))
+        );
+        $rowStatus = preg_replace('/[\\s-]+/u', '_', $rowStatus);
+        $rowStatus = preg_replace('/_+/', '_', $rowStatus);
 
+        /*
+         * Filter status mengikuti kategori utama di kolom
+         * resolved_eskalasi. Kolom status dipakai sebagai fallback
+         * hanya bila kategori utama tidak dikenal/kosong.
+         */
+        $filterableStatuses = [
+            'resolved',
+            'eskalasi',
+            'cancel',
+            'eskalasi_dit',
+            'close',
+        ];
 
-        if (
-            in_array(
-                $rowStatus,
-                [
-                    'cancel',
-                    'eskalasi_dit',
-                    'close',
-                ],
-                true
-            )
-        ) {
-
+        if (in_array($statusReKey, $filterableStatuses, true)) {
+            $statusReFilter = $statusReKey;
+        } elseif (in_array($rowStatus, $filterableStatuses, true)) {
             $statusReFilter = $rowStatus;
-
-        } elseif (
-            $statusRe === 'RESOLVED'
-        ) {
-
-            $statusReFilter = 'resolved';
-
-        } elseif (
-            $statusRe === 'ESKALASI'
-        ) {
-
-            $statusReFilter = 'eskalasi';
-
         } else {
-
             $statusReFilter = 'lainnya';
-
         }
 
 
@@ -310,16 +316,7 @@
                 $r->pic,
 
             'status_re' =>
-                in_array(
-                    $statusRe,
-                    [
-                        'RESOLVED',
-                        'ESKALASI',
-                    ],
-                    true
-                )
-                    ? $statusRe
-                    : ($statusRe ?: '-'),
+                $statusReDisplay,
 
             'status_re_filter' =>
                 $statusReFilter,
@@ -1177,12 +1174,12 @@
 
 
   .df-page-loading{
-    position:absolute;
-    inset:0;
-    width:100%;
-    height:100%;
-    min-height:100%;
-    z-index:999999;
+    position:absolute !important;
+    inset:0 !important;
+    width:100% !important;
+    height:100% !important;
+    min-height:100% !important;
+    z-index:2147483647 !important;
     display:flex;
     align-items:center;
     justify-content:center;
@@ -1192,16 +1189,40 @@
     user-select:none;
     pointer-events:auto;
     touch-action:none;
-    background:#faf7f7;
+    overscroll-behavior:none;
+    background:rgba(250,247,247,.985);
     border-radius:22px;
     cursor:none !important;
 }
 
 .df-page-loading.is-hidden{
     display:none !important;
-    opacity:0;
-    visibility:hidden;
-    pointer-events:none;
+    opacity:0 !important;
+    visibility:hidden !important;
+    pointer-events:none !important;
+}
+
+/* Saat loader tampil, kursor dan scroll dinonaktifkan seperti Upload Data. */
+html.dfLoadingLock,
+body.dfLoadingLock{
+    overflow:hidden !important;
+    cursor:none !important;
+}
+
+html.dfLoadingLock *,
+body.dfLoadingLock *{
+    cursor:none !important;
+}
+
+.content-shell.df-detail-loading-shell{
+    position:relative !important;
+    isolation:isolate !important;
+}
+
+.content-shell.df-detail-loading-shell > .df-page-loading{
+    position:absolute !important;
+    inset:0 !important;
+    z-index:2147483647 !important;
 }
 
 .df-page-loading,
@@ -2251,6 +2272,75 @@
     }
 }
 
+
+/* =========================================================
+   DETAIL FALLOUT LOADING — SAMA DENGAN UPLOAD DATA
+   Perubahan hanya berlaku saat overlay aktif.
+   ========================================================= */
+html.dfLoadingLock,
+body.dfLoadingLock {
+    overflow: hidden !important;
+    cursor: none !important;
+}
+
+html.dfLoadingLock *,
+body.dfLoadingLock *,
+html.dfLoadingLock *::before,
+html.dfLoadingLock *::after,
+body.dfLoadingLock *::before,
+body.dfLoadingLock *::after {
+    cursor: none !important;
+}
+
+.content-shell.df-detail-loading-shell {
+    position: relative !important;
+    isolation: isolate !important;
+    min-height: 380px !important;
+}
+
+.content-shell.df-detail-loading-shell > .content {
+    overflow: hidden !important;
+    cursor: none !important;
+}
+
+.content-shell.df-detail-loading-shell > .df-page-loading {
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 2147483647 !important;
+    display: block !important;
+    box-sizing: border-box !important;
+    padding: max(40px, calc(50vh - 200px)) 20px 20px !important;
+    overflow: hidden !important;
+    background: rgba(250, 247, 247, .96) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    border-radius: 22px !important;
+    cursor: none !important;
+    transition: opacity .28s ease, visibility .28s ease !important;
+}
+
+.content-shell.df-detail-loading-shell > .df-page-loading .df-page-loading-card {
+    position: sticky !important;
+    top: calc(50vh - 130px) !important;
+    width: min(320px, 100%) !important;
+    margin: 0 auto !important;
+    cursor: none !important;
+}
+
+.df-page-loading,
+.df-page-loading *,
+.df-page-loading *::before,
+.df-page-loading *::after {
+    cursor: none !important;
+}
+
+.df-page-loading.is-hidden {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
 </style>
 
 
@@ -2260,71 +2350,108 @@
 
     /*
     |--------------------------------------------------------------------------
-    | DETAIL FALLOUT LOADER — TUTUP AREA DETAIL SAJA
+    | DETAIL FALLOUT LOADER — SAMAKAN DENGAN UPLOAD DATA
+    | Overlay menjadi anak .content-shell dan menutup seluruh area konten.
+    | Tidak mengubah tabel, filter, modal, atau logika data.
     |--------------------------------------------------------------------------
     */
     (function () {
-        const pageWrap =
-            document.querySelector('.df-wrap');
+        'use strict';
 
-        const pageLoading =
-            document.getElementById('dfPageLoading');
+        const pageWrap = document.querySelector('.df-wrap');
+        const pageLoading = document.getElementById('dfPageLoading');
 
         if (!pageWrap || !pageLoading) {
             return;
         }
 
-        pageWrap.classList.add(
-            'df-detail-loading'
-        );
+        const root = document.documentElement;
+        const body = document.body;
+        const target =
+            pageWrap.closest('.content-shell') ||
+            document.getElementById('contentShell') ||
+            pageWrap.closest('.content') ||
+            pageWrap;
 
-        const stopPageMove = function (event) {
+        const hadLoadingClass = target.classList.contains('is-loading');
+
+        /*
+         * Portal loader ke shell seperti halaman Upload Data.
+         * Memasukkannya sebagai child pertama memastikan overlay berada
+         * di atas konten, termasuk padding dan area scroll konten.
+         */
+        if (target && pageLoading.parentElement !== target) {
+            target.insertBefore(pageLoading, target.firstChild);
+        }
+
+        target.classList.add('df-detail-loading-shell');
+        if (target.classList.contains('content-shell')) {
+            target.classList.add('is-loading');
+        }
+
+        root.classList.add('dfLoadingLock');
+        body.classList.add('dfLoadingLock');
+
+        let finished = false;
+
+        function stopPageMove(event) {
             event.preventDefault();
-        };
+        }
 
-        pageLoading.addEventListener(
-            'wheel',
-            stopPageMove,
-            { passive: false }
-        );
+        function handlePageShow(event) {
+            if (event.persisted) {
+                hideDetailLoader();
+            }
+        }
 
-        pageLoading.addEventListener(
-            'touchmove',
-            stopPageMove,
-            { passive: false }
-        );
+        pageLoading.addEventListener('wheel', stopPageMove, { passive: false });
+        pageLoading.addEventListener('touchmove', stopPageMove, { passive: false });
+        window.addEventListener('pageshow', handlePageShow);
 
-        window.setTimeout(
-            function () {
-                pageLoading.classList.add(
-                    'is-hidden'
-                );
+        function hideDetailLoader() {
+            if (finished) {
+                return;
+            }
 
-                pageWrap.classList.remove(
-                    'df-detail-loading'
-                );
+            finished = true;
+            pageLoading.classList.add('is-hidden');
 
-                pageLoading.removeEventListener(
-                    'wheel',
-                    stopPageMove
-                );
+            pageLoading.removeEventListener('wheel', stopPageMove);
+            pageLoading.removeEventListener('touchmove', stopPageMove);
+            window.removeEventListener('pageshow', handlePageShow);
 
-                pageLoading.removeEventListener(
-                    'touchmove',
-                    stopPageMove
-                );
+            root.classList.remove('dfLoadingLock');
+            body.classList.remove('dfLoadingLock');
+            target.classList.remove('df-detail-loading-shell');
 
-                if (
-                    pageLoading &&
-                    pageLoading.parentNode
-                ) {
-                    pageLoading.parentNode.removeChild(
-                        pageLoading
-                    );
+            if (!hadLoadingClass) {
+                target.classList.remove('is-loading');
+            }
+
+            window.setTimeout(function () {
+                if (pageLoading.parentNode) {
+                    pageLoading.parentNode.removeChild(pageLoading);
                 }
-            },
-            350
-        );
+            }, 180);
+        }
+
+        /*
+         * Sama seperti Upload Data: tunggu window load bila dokumen
+         * masih memuat resource, lalu tampilkan sekitar 1 detik.
+         * Di navigasi SPA, document.readyState biasanya sudah complete.
+         */
+        function startLoaderTimer() {
+            window.setTimeout(hideDetailLoader, 1000);
+        }
+
+        if (document.readyState === 'complete') {
+            startLoaderTimer();
+        } else {
+            window.addEventListener('load', startLoaderTimer, { once: true });
+        }
+
+        /* Pengaman agar loader tidak tertinggal jika resource macet. */
+        window.setTimeout(hideDetailLoader, 6000);
     })();
 
 

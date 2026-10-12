@@ -41,6 +41,12 @@
 
     $filterTanggal = trim((string) request()->query('tanggal', $filterTanggal ?? ''));
 
+    $filterSearch = $filterSearch ?? trim((string) request()->query('q', ''));
+    $filterPeriode = $filterPeriode ?? strtolower(trim((string) request()->query('periode', 'harian')));
+    if (!in_array($filterPeriode, ['harian', 'mingguan', 'bulanan', 'tahunan'], true)) {
+        $filterPeriode = 'harian';
+    }
+
     $filterSto = strtolower(trim((string) request()->query('sto', $filterSto ?? 'semua')));
     if ($filterSto === '') {
         $filterSto = 'semua';
@@ -1593,9 +1599,6 @@ footer .brand{
 }
 
 
-
-
-
 /* ==========================================================
    ORDER ID LENGKAP MODAL
    ========================================================== */
@@ -1977,92 +1980,35 @@ footer .brand{
 }
 
 
-
-/* ============================================================
-   LOADING PAGE — hanya untuk halaman Data Rekap Fallout
-   ============================================================ */
-#rekapPageLoader{
-    position:fixed;
-    inset:0;
-    z-index:2147483647;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    background:
-        radial-gradient(circle at 50% 35%, rgba(200,16,46,.10), transparent 34%),
-        rgba(247,243,241,.98);
-    backdrop-filter:blur(8px);
-    -webkit-backdrop-filter:blur(8px);
-    opacity:1;
-    visibility:visible;
-    transition:opacity .35s ease, visibility .35s ease;
-}
-
-#rekapPageLoader.is-hidden{
-    opacity:0;
-    visibility:hidden;
-    pointer-events:none;
-}
-
-.rekap-loader-card{
-    min-width:280px;
-    max-width:360px;
-    padding:28px 30px 26px;
-    border-radius:22px;
-    background:rgba(255,255,255,.94);
-    border:1px solid rgba(200,16,46,.10);
-    box-shadow:0 30px 80px -34px rgba(58,4,16,.35);
-    text-align:center;
-}
-
-.rekap-loader-logo{
-    width:58px;
-    height:58px;
-    margin:0 auto 16px;
-    border-radius:14px;
-    display:grid;
-    place-items:center;
-    background:#fff;
-    border:1px solid #eee5e4;
-    box-shadow:0 10px 24px -16px rgba(58,4,16,.25);
-}
-
-.rekap-loader-logo img{
-    width:46px;
-    height:46px;
-    object-fit:contain;
-    display:block;
-}
-
-.rekap-loader-spinner{
-    width:34px;
-    height:34px;
-    margin:0 auto 14px;
-    border:3px solid rgba(200,16,46,.12);
-    border-top-color:#C8102E;
-    border-right-color:#8A0F26;
-    border-radius:50%;
-    animation:rekapLoaderSpin .8s linear infinite;
-}
-
-.rekap-loader-title{
-    font-family:'Space Grotesk',sans-serif;
-    font-size:17px;
-    font-weight:700;
-    color:#3A0410;
-}
-
-.rekap-loader-text{
-    margin-top:6px;
-    font-family:'Inter',sans-serif;
-    font-size:12px;
-    line-height:1.55;
-    color:#7A6B6F;
-}
-
-@keyframes rekapLoaderSpin{
-    to{transform:rotate(360deg);}
-}
+/* ==========================================================
+   FILTER UX + CLEANER REKAP PRESENTATION
+   ========================================================== */
+body{background:#F5F6F8;}
+.topbar{position:sticky;top:0;z-index:1000;box-shadow:0 5px 18px rgba(58,4,16,.10);}
+.wrap{max-width:1400px;padding:28px clamp(16px,2.5vw,34px) 36px;}
+.page-head{align-items:center;}
+.stats .stat-card,.filter-card,.graf-card{box-shadow:0 5px 18px rgba(35,20,24,.035);}
+.stat-card{min-height:78px;}
+.filter-row-labeled{align-items:flex-end;gap:12px;}
+.filter-field{display:flex;flex:1 1 155px;min-width:150px;flex-direction:column;gap:7px;}
+.filter-field label{font-size:11px;font-weight:700;color:#6F6266;}
+.filter-field select,.filter-field input{width:100%;min-width:0;min-height:42px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);font:13px 'Inter',sans-serif;outline:none;}
+.filter-field select:focus,.filter-field input:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(200,16,46,.07);}
+.filter-search-field{flex:1.5 1 220px;}
+.filter-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto;}
+.filter-actions .btn-download{border:0;cursor:pointer;font-family:inherit;}
+.filter-reset,.btn-refresh{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:41px;padding:10px 14px;border:1px solid var(--line);border-radius:9px;background:#fff;color:#69595E;text-decoration:none;font-size:12px;font-weight:700;white-space:nowrap;}
+.filter-reset:hover,.btn-refresh:hover{border-color:var(--red);color:var(--red);}
+.filter-hint{margin-top:12px;color:var(--ink-lo);font-size:11.5px;line-height:1.5;}
+.btn-refresh{background:#fff;color:#7A0C0C;}
+.page-head-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+.rf-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 2px 4px;color:var(--ink-lo);font-size:12px;}
+.rf-pagination-controls{display:flex;align-items:center;gap:8px;}
+.rf-pagination select,.rf-pagination button{min-height:34px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);padding:7px 10px;font:600 12px 'Inter',sans-serif;}
+.rf-pagination button{cursor:pointer;}
+.rf-pagination button:disabled{opacity:.42;cursor:not-allowed;}
+.table-wrap table{border-radius:12px;}
+@media(max-width:900px){.page-head{align-items:stretch;}.filter-actions{width:100%;}.filter-reset{flex:1;}.page-head-actions{width:100%;}.btn-download,.btn-refresh{flex:1;}}
 
 </style>
 
@@ -2072,23 +2018,6 @@ footer .brand{
 
 
 <body data-tf-nav="public">
-
-<!-- ============================================================
-     LOADING PAGE
-     ============================================================ -->
-<div id="rekapPageLoader" aria-label="Memuat Data Rekap Fallout">
-    <div class="rekap-loader-card">
-        <div class="rekap-loader-logo">
-            <img src="{{ asset('images/logo-telkom-white.png') }}" alt="Telkom Indonesia">
-        </div>
-        <div class="rekap-loader-spinner"></div>
-        <div class="rekap-loader-title">Telkom Fallout System</div>
-        <div class="rekap-loader-text">Memuat Data Rekap Fallout...</div>
-    </div>
-</div>
-
-
-
 
 <!-- ========================================================
      TOPBAR
@@ -2212,13 +2141,19 @@ footer .brand{
 
 
 
-    <a
+    <div class="page-head-actions">
+        <a class="btn-refresh" href="{{ request()->fullUrl() }}" title="Muat ulang data">↻ Refresh</a>
+        <a
         class="btn-download"
+        aria-label="Unduh CSV sesuai filter tabel yang aktif"
+        data-no-spa
         href="{{ route('rekap-fallout.download', [
             'witel'   => $tableWitel,
             'tanggal' => $filterTanggal,
             'sto'     => $filterSto,
             'status'  => $filterStatus,
+            'q'       => $filterSearch,
+            'periode' => $filterPeriode,
         ]) }}"
     >
 
@@ -2253,6 +2188,7 @@ footer .brand{
 
 
     </a>
+    </div>
 
 
 </div>
@@ -2620,15 +2556,8 @@ footer .brand{
     >
 
 
-        <input
-
-            type="hidden"
-
-            name="view"
-
-            value="tabel"
-
-        >
+        <input type="hidden" name="view" value="tabel">
+        <input type="hidden" name="graph_witel" value="{{ $graphWitel }}">
 
 
         <div class="filter-title">
@@ -2644,135 +2573,49 @@ footer .brand{
 
 
 
-        <div class="filter-row">
-
-
-            <!-- WITEL -->
-
-            <select
-
-                name="table_witel"
-
-                onchange="rfTableWitelChanged(this.form, this.value)"
-
-            >
-
-
-                @foreach(
-
-                    $witelLabel
-                    as $key => $label
-
-                )
-
-
-                    <option
-
-                        value="{{ $key }}"
-
-                        {{
-                            $tableWitel === $key
-                                ? 'selected'
-                                : ''
-                        }}
-
-                    >
-
-                        {{ $label }}
-
-                    </option>
-
-
-                @endforeach
-
-
-            </select>
-
-
-
-            <!-- TANGGAL -->
-
-            <input
-
-                type="date"
-
-                name="tanggal"
-
-                value="{{ $filterTanggal }}"
-
-                onchange="this.form.submit()"
-
-            >
-
-
-
-            <!-- STO -->
-
-            <select
-
-                name="sto"
-
-                onchange="this.form.submit()"
-
-            >
-
-
-                <option
-
-                    value="semua"
-
-                    {{
-                        $filterSto === 'semua'
-                            ? 'selected'
-                            : ''
-                    }}
-
-                >
-
-                    Semua STO
-
-                </option>
-
-
-                @foreach(
-
-                    $stoOptions
-                    as $sto
-
-                )
-
-
-                    <option
-
-                        value="{{ $sto }}"
-
-                        {{
-                            strtoupper(
-                                $filterSto
-                            )
-                            ===
-                            strtoupper(
-                                $sto
-                            )
-                                ? 'selected'
-                                : ''
-                        }}
-
-                    >
-
-                        {{ $sto }}
-
-                    </option>
-
-
-                @endforeach
-
-
-            </select>
-
-
+        <div class="filter-row filter-row-labeled">
+            <div class="filter-field">
+                <label for="tableWitel">Witel / Cabang</label>
+                <select id="tableWitel" name="table_witel" onchange="rfTableWitelChanged(this.form, this.value)">
+                    @foreach($witelLabel as $key => $label)
+                        <option value="{{ $key }}" {{ $tableWitel === $key ? 'selected' : '' }}>{{ $key === 'semua' ? 'Semua Witel' : $label }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="filter-field">
+                <label for="filterPeriode">Periode</label>
+                <select id="filterPeriode" name="periode" onchange="rfSubmitFilter(this.form)">
+                    <option value="harian" {{ $filterPeriode === 'harian' ? 'selected' : '' }}>Harian</option>
+                    <option value="mingguan" {{ $filterPeriode === 'mingguan' ? 'selected' : '' }}>Mingguan</option>
+                    <option value="bulanan" {{ $filterPeriode === 'bulanan' ? 'selected' : '' }}>Bulanan</option>
+                    <option value="tahunan" {{ $filterPeriode === 'tahunan' ? 'selected' : '' }}>Tahunan</option>
+                </select>
+            </div>
+            <div class="filter-field">
+                <label for="filterTanggal">Tanggal acuan</label>
+                <input id="filterTanggal" type="date" name="tanggal" value="{{ $filterTanggal }}" onchange="rfSubmitFilter(this.form)">
+            </div>
+            <div class="filter-field">
+                <label for="filterSto">Wilayah STO</label>
+                <select id="filterSto" name="sto" onchange="rfSubmitFilter(this.form)">
+                    <option value="semua" {{ $filterSto === 'semua' ? 'selected' : '' }}>Semua STO</option>
+                    @foreach($stoOptions as $sto)
+                        <option value="{{ $sto }}" {{ strtoupper($filterSto) === strtoupper($sto) ? 'selected' : '' }}>{{ $sto }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="filter-field filter-search-field">
+                <label for="filterSearch">Cari Order ID, PIC, atau deskripsi</label>
+                <input id="filterSearch" type="search" name="q" value="{{ $filterSearch }}" maxlength="100" placeholder="Ketik kata kunci…">
+            </div>
+            <div class="filter-actions">
+                <button type="submit" class="btn-download" style="min-height:42px;padding:10px 14px">Cari data</button>
+                <a class="filter-reset" href="{{ $rekapAction }}?view=tabel">Reset</a>
+            </div>
         </div>
 
+        <p class="filter-hint">Pilih tanggal acuan untuk menerapkan periode harian, mingguan, bulanan, atau tahunan. Kosongkan tanggal untuk melihat seluruh tanggal.</p>
+        <input type="hidden" name="status" id="tableStatus" value="{{ $filterStatus }}">
 
 
         <!-- STATUS -->
@@ -2788,13 +2631,11 @@ footer .brand{
             )
 
 
-                <button
+                <button onclick="rfSetStatusAndSubmit(this)"
 
-                    type="submit"
+                    type="button"
 
-                    name="status"
-
-                    value="{{ $key }}"
+                    data-status="{{ $key }}"
 
                     class="
                         pill
@@ -2865,6 +2706,10 @@ footer .brand{
                     </th>
 
                     <th>
+                        CABANG
+                    </th>
+
+                    <th>
                         DESKRIPSI
                     </th>
 
@@ -2913,28 +2758,11 @@ footer .brand{
                     @php
 
 
-                        $resolvedStatus =
+                        $resolvedStatus = strtolower(
+                            trim((string) ($row->resolved_eskalasi ?? ''))
+                        );
 
-                            strtolower(
-
-                                trim(
-
-                                    (string)
-
-                                    (
-
-                                        $row
-                                            ->resolved_eskalasi
-
-                                        ??
-
-                                        ''
-
-                                    )
-
-                                )
-
-                            );
+                        $resolvedStatus = preg_replace('/[\\s-]+/u', '_', $resolvedStatus);
 
 
 
@@ -3054,6 +2882,10 @@ footer .brand{
 
                         </td>
 
+
+                        <td>
+                            {{ optional(optional($row->batch)->branch)->nama_cabang ?? '-' }}
+                        </td>
 
                         <td>
 
@@ -3220,7 +3052,7 @@ footer .brand{
 
                         <td
 
-                            colspan="9"
+                            colspan="10"
 
                             class="data-empty"
 
@@ -3244,9 +3076,24 @@ footer .brand{
 
         </table>
 
-
     </div>
 
+    <div class="rf-pagination" id="rfTablePagination">
+        <div id="rfPageSummary">Memuat data…</div>
+        <div class="rf-pagination-controls">
+            <label for="rfPageSize">Baris</label>
+            <select id="rfPageSize" aria-label="Jumlah baris per halaman">
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="all">Semua Data ({{ number_format($total) }})</option>
+            </select>
+            <button type="button" id="rfPagePrev">Sebelumnya</button>
+            <span id="rfPageLabel">Halaman 1</span>
+            <button type="button" id="rfPageNext">Berikutnya</button>
+        </div>
+    </div>
 
 </div>
 
@@ -3458,15 +3305,13 @@ footer .brand{
     >
 
 
-        <input
-
-            type="hidden"
-
-            name="view"
-
-            value="grafik"
-
-        >
+        <input type="hidden" name="view" value="grafik">
+        <input type="hidden" name="table_witel" value="{{ $tableWitel }}">
+        <input type="hidden" name="tanggal" value="{{ $filterTanggal }}">
+        <input type="hidden" name="periode" value="{{ $filterPeriode }}">
+        <input type="hidden" name="sto" value="{{ $filterSto }}">
+        <input type="hidden" name="status" value="{{ $filterStatus }}">
+        <input type="hidden" name="q" value="{{ $filterSearch }}">
 
 
         <div class="graph-filter-title">
@@ -3480,7 +3325,7 @@ footer .brand{
 
             name="graph_witel"
 
-            onchange="this.form.submit()"
+            onchange="rfSubmitFilter(this.form)"
 
         >
 
@@ -4698,62 +4543,109 @@ document.addEventListener('DOMContentLoaded', function(){
     rfSwitchView(view);
 });
 
+/* tf-navigation.js evaluates inline scripts inside a function scope.
+   Export handlers explicitly so inline buttons keep working after SPA navigation. */
+window.rfOpenOrderId = rfOpenOrderId;
+window.rfCloseOrderId = rfCloseOrderId;
+window.rfCopyOrderId = rfCopyOrderId;
+window.rfOpenDetail = rfOpenDetail;
+window.rfCloseDetail = rfCloseDetail;
+window.rfSwitchView = rfSwitchView;
+
 </script>
 
 
+<script>
+function rfSubmitFilter(form) {
+    if (!form) return;
+    if (typeof form.requestSubmit === 'function') {
+        form.requestSubmit();
+        return;
+    }
+    const event = new Event('submit', { bubbles: true, cancelable: true });
+    if (form.dispatchEvent(event)) form.submit();
+}
+
+function rfSetStatusAndSubmit(button) {
+    if (!button || !button.form) return;
+    const status = button.form.querySelector('#tableStatus');
+    if (!status) return;
+    status.value = button.getAttribute('data-status') || 'semua';
+    button.form.querySelectorAll('.status-pills .pill').forEach(function (pill) {
+        pill.classList.toggle('active', pill === button);
+    });
+    rfSubmitFilter(button.form);
+}
+
+function rfTableWitelChanged(form, value) {
+    if (!form) return;
+    const tanggal = form.querySelector('[name="tanggal"]');
+    const sto = form.querySelector('[name="sto"]');
+    const status = form.querySelector('#tableStatus');
+    if (tanggal) tanggal.value = '';
+    if (sto) sto.value = 'semua';
+    if (status) status.value = 'semua';
+    rfSubmitFilter(form);
+}
+
+window.rfSubmitFilter = rfSubmitFilter;
+window.rfSetStatusAndSubmit = rfSetStatusAndSubmit;
+window.rfTableWitelChanged = rfTableWitelChanged;
+
+</script>
 
 
 <script>
-function rfTableWitelChanged(form, value){
-    if(!form){
-        return;
+function rfInitPagination() {
+    const table = document.querySelector('#viewTabel .table-wrap table');
+    const footer = document.getElementById('rfTablePagination');
+    if (!table || !footer) return;
+    const tbody = table.tBodies && table.tBodies[0];
+    if (!tbody) return;
+
+    const rows = Array.from(tbody.rows).filter(row => !row.querySelector('.data-empty'));
+    const emptyRows = Array.from(tbody.rows).filter(row => Boolean(row.querySelector('.data-empty')));
+    const size = document.getElementById('rfPageSize');
+    const summary = document.getElementById('rfPageSummary');
+    const label = document.getElementById('rfPageLabel');
+    const prev = document.getElementById('rfPagePrev');
+    const next = document.getElementById('rfPageNext');
+    if (!size || !summary || !label || !prev || !next) return;
+
+    let page = 1;
+    function render() {
+        const pageSize = size.value === 'all'
+            ? Math.max(1, rows.length)
+            : Math.max(1, Number(size.value) || 10);
+        const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+        page = Math.min(Math.max(page, 1), pageCount);
+        const first = (page - 1) * pageSize;
+        const last = Math.min(first + pageSize, rows.length);
+
+        rows.forEach((row, index) => {
+            row.style.display = index >= first && index < last ? '' : 'none';
+        });
+        emptyRows.forEach(row => { row.style.display = rows.length ? 'none' : ''; });
+
+        summary.textContent = rows.length
+            ? (first + 1) + '–' + last + ' dari ' + rows.length + ' data'
+            : 'Tidak ada data';
+        label.textContent = 'Halaman ' + page + ' dari ' + pageCount;
+        prev.disabled = page <= 1;
+        next.disabled = page >= pageCount;
+        prev.style.display = pageCount <= 1 ? 'none' : '';
+        next.style.display = pageCount <= 1 ? 'none' : '';
     }
 
-    const tanggal = form.querySelector('[name="tanggal"]');
-    const sto = form.querySelector('[name="sto"]');
-    const statusButtons = form.querySelectorAll('[name="status"]');
-
-    /* Saat Witel tabel berganti, filter turunannya direset. */
-    if(tanggal){
-        tanggal.value = '';
-    }
-
-    if(sto){
-        sto.value = 'semua';
-    }
-
-    statusButtons.forEach(function(button){
-        if(button.value === 'semua'){
-            button.click();
-        }
-    });
-
-    form.submit();
+    // Replace handlers cleanly when a new table is mounted by SPA navigation.
+    size.onchange = function () { page = 1; render(); };
+    prev.onclick = function () { page -= 1; render(); };
+    next.onclick = function () { page += 1; render(); };
+    render();
 }
 
-(function(){
-    const loader = document.getElementById('rekapPageLoader');
-    if (!loader) return;
-
-    const startedAt = Date.now();
-    const minVisible = 250;
-
-    function hideLoader(){
-        const wait = Math.max(minVisible - (Date.now() - startedAt), 0);
-        setTimeout(function(){
-            loader.classList.add('is-hidden');
-            setTimeout(function(){
-                loader.remove();
-            }, 400);
-        }, wait);
-    }
-
-    if (document.readyState === 'complete') {
-        hideLoader();
-    } else {
-        window.addEventListener('load', hideLoader, {once:true});
-    }
-})();
+window.rfInitPagination = rfInitPagination;
+rfInitPagination();
 </script>
 
 </body>

@@ -1,534 +1,1366 @@
 @php
-  // ── DIHUBUNGKAN KE DATABASE (tabel fallout_data via model FalloutData) ──
-  $dbRows = \App\Models\FalloutData::forWitel($witelSlug)
-      ->orderByDesc('tanggal')
-      ->orderByDesc('row_id')
-      ->get();
 
-  // Dipetakan ke bentuk array untuk tabel & modal.
-  $rows = $dbRows->values()->map(function ($r, $i) {
-      $resolvedEskalasi = strtolower(trim((string) ($r->resolved_eskalasi ?? '')));
-      $statusValue = strtolower(trim((string) ($r->status ?? '')));
+    /*
+    |--------------------------------------------------------------------------
 
-      // Status filter: utamakan nilai RESOLVED/ESKALASI, lalu fallback ke status detail.
-      if (in_array($resolvedEskalasi, ['resolved', 'cancel', 'eskalasi_dit', 'close'], true)) {
-          $statusRe = $resolvedEskalasi;
-      } elseif (in_array($statusValue, ['cancel', 'eskalasi_dit', 'close'], true)) {
-          $statusRe = $statusValue;
-      } elseif ($resolvedEskalasi !== '') {
-          $statusRe = 'lainnya';
-      } else {
-          $statusRe = 'lainnya';
-      }
+    | AMBIL DATA DARI DATABASE
+    |--------------------------------------------------------------------------
 
-      return [
-          'no'        => $i + 1,
-          'row_id'    => $r->row_id,
-          'order_id'  => $r->order_id,
-          'deskripsi' => $r->deskripsi,
-          'sto'       => $r->sto,
-          'tgl'       => $r->tanggal ? $r->tanggal->format('Y-m-d') : '',
-          'pic'       => $r->pic,
-          'status_re' => $statusRe,
-          'status'    => $r->status,
-          'ket'       => $r->ket,
-      ];
-  })->all();
+    */
 
-  // Total keseluruhan sistem (semua witel).
-  $totalData = \App\Models\FalloutData::count();
+    $dbRowsQuery = \Illuminate\Support\Facades\DB::table('fallout_data')
+        ->join(
+            'upload_batches',
+            'upload_batches.batch_id',
+            '=',
+            'fallout_data.batch_id'
+        )
+        ->join(
+            'branches',
+            'branches.branch_id',
+            '=',
+            'upload_batches.branch_id'
+        );
 
-  $stoOptions = ['TBE', 'JAG', 'BIN', 'KAL', 'KBY', 'PSM', 'CPE', 'KMG'];
+    /*
+    |--------------------------------------------------------------------------
+    | FILTER WITEL
+    |--------------------------------------------------------------------------
+    | Cocokkan kode Witel secara aman (trim + lowercase).
+    */
 
-  $statusReLabels = [
-    'resolved'     => 'RESOLVED',
-    'cancel'       => 'CANCEL',
-    'eskalasi_dit' => 'ESKALASI DIT',
-    'close'        => 'CLOSE',
-    'lainnya'      => 'ESKALASI',
-  ];
+    $dbRowsQuery->whereRaw(
+        'LOWER(TRIM(branches.kode_cabang)) = ?',
+        [
+            strtolower(
+                trim((string) $witelSlug)
+            )
+        ]
+    );
 
-  $statusLabels = [
-    'completed'   => 'COMPLETED',
-    'process_oss' => 'Process OSS',
-  ];
+    $dbRows = $dbRowsQuery
+        ->orderByDesc('fallout_data.tanggal')
+        ->orderByDesc('fallout_data.row_id')
+        ->get([
+            'fallout_data.row_id',
+            'fallout_data.batch_id',
+            'fallout_data.order_id',
+            'fallout_data.deskripsi',
+            'fallout_data.sto',
+            'fallout_data.tanggal',
+            'fallout_data.pic',
+            'fallout_data.resolved_eskalasi',
+            'fallout_data.status',
+            'fallout_data.ket',
+            'fallout_data.uploaded_at',
+        ]);
+
+
+    /*
+    |--------------------------------------------------------------------------
+
+    | NORMALISASI STO
+    |--------------------------------------------------------------------------
+
+    | Pastikan STO selalu bersih (contoh: KBY), termasuk bila data
+    | lama tersimpan sebagai JSON.
+    */
+
+    $normalizeSto = function ($value) {
+
+        if ($value === null) {
+            return '';
+        }
+
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return '';
+        }
+
+        if ($value[0] === '{' || $value[0] === '[') {
+
+            $decoded = json_decode($value, true);
+
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+
+                if (isset($decoded['STO']) && !is_array($decoded['STO'])) {
+                    $candidate = trim((string) $decoded['STO']);
+
+                    if ($candidate !== '') {
+                        return strtoupper($candidate);
+                    }
+                }
+
+                if (isset($decoded['sto']) && !is_array($decoded['sto'])) {
+                    $candidate = trim((string) $decoded['sto']);
+
+                    if ($candidate !== '') {
+                        return strtoupper($candidate);
+                    }
+                }
+
+                if (array_is_list($decoded)) {
+
+                    foreach ($decoded as $item) {
+
+                        if (!is_array($item)) {
+                            continue;
+                        }
+
+                        $candidate =
+                            $item['STO']
+                            ?? $item['sto']
+                            ?? null;
+
+                        if (
+                            $candidate !== null
+                            && !is_array($candidate)
+                        ) {
+
+                            $candidate = trim((string) $candidate);
+
+                            if ($candidate !== '') {
+                                return strtoupper($candidate);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (preg_match(
+                '/"STO"\s*:\s*"([^"]+)"/i',
+                $value,
+                $match
+            )) {
+                return strtoupper(trim($match[1]));
+            }
+        }
+
+        $unescaped = str_replace('\\\"', '"', $value);
+
+        if (preg_match(
+            '/"STO"\s*:\s*"([^"]+)"/i',
+            $unescaped,
+            $match
+        )) {
+            return strtoupper(trim($match[1]));
+        }
+
+        return strtoupper($value);
+    };
+
+
+    /*
+    |--------------------------------------------------------------------------
+
+    | MAPPING DATA
+    |--------------------------------------------------------------------------
+
+    */
+
+    $rows = $dbRows->values()->map(function ($r, $i) use ($normalizeSto) {
+
+        /*
+        |--------------------------------------------------------------------------
+
+        | RESOLVED / ESKALASI
+        |--------------------------------------------------------------------------
+
+        */
+
+        $statusReRaw = trim((string) ($r->resolved_eskalasi ?? ''));
+
+        /*
+         * Normalisasi kategori berdasarkan kolom RESOLVED/ESKALASI
+         * yang benar-benar ditampilkan pada tabel. Spasi dan tanda
+         * hubung disamakan menjadi underscore agar nilai seperti
+         * "Eskalasi DIT" dan "ESKALASI_DIT" bisa difilter sama.
+         */
+        $statusReKey = strtolower($statusReRaw);
+        $statusReKey = preg_replace('/[\\s-]+/u', '_', $statusReKey);
+        $statusReKey = preg_replace('/_+/', '_', $statusReKey);
+        $statusRe = strtoupper($statusReKey);
+
+        $statusReDisplay = [
+            'resolved' => 'RESOLVED',
+            'eskalasi' => 'ESKALASI',
+            'cancel' => 'CANCEL',
+            'eskalasi_dit' => 'ESKALASI_DIT',
+            'close' => 'CLOSE',
+        ][$statusReKey] ?? ($statusReRaw !== '' ? strtoupper($statusReRaw) : '-');
+
+
+        /*
+        |--------------------------------------------------------------------------
+
+        | TANGGAL
+        |--------------------------------------------------------------------------
+
+        */
+
+        $tanggalObj = null;
+
+        if ($r->tanggal) {
+            try {
+                $tanggalObj = \Carbon\Carbon::parse($r->tanggal);
+            } catch (\Throwable $e) {
+                $tanggalObj = null;
+            }
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+
+        | UPLOADED AT
+        |--------------------------------------------------------------------------
+
+        */
+
+        $uploadedAtObj = null;
+
+        if ($r->uploaded_at) {
+            try {
+                $uploadedAtObj =
+                    \Carbon\Carbon::parse($r->uploaded_at);
+            } catch (\Throwable $e) {
+                $uploadedAtObj = null;
+            }
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+
+        | BARU
+        |--------------------------------------------------------------------------
+
+        */
+
+        $isBaru =
+            $uploadedAtObj
+                ? $uploadedAtObj->isToday()
+                : false;
+
+
+        /*
+        |--------------------------------------------------------------------------
+
+        | FILTER STATUS
+        |--------------------------------------------------------------------------
+
+        */
+
+        $rowStatus = strtolower(
+            trim((string) ($r->status ?? ''))
+        );
+        $rowStatus = preg_replace('/[\\s-]+/u', '_', $rowStatus);
+        $rowStatus = preg_replace('/_+/', '_', $rowStatus);
+
+        /*
+         * Filter status mengikuti kategori utama di kolom
+         * resolved_eskalasi. Kolom status dipakai sebagai fallback
+         * hanya bila kategori utama tidak dikenal/kosong.
+         */
+        $filterableStatuses = [
+            'resolved',
+            'eskalasi',
+            'cancel',
+            'eskalasi_dit',
+            'close',
+        ];
+
+        if (in_array($statusReKey, $filterableStatuses, true)) {
+            $statusReFilter = $statusReKey;
+        } elseif (in_array($rowStatus, $filterableStatuses, true)) {
+            $statusReFilter = $rowStatus;
+        } else {
+            $statusReFilter = 'lainnya';
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+
+        | RETURN
+        |--------------------------------------------------------------------------
+
+        */
+
+        return [
+
+            'no' =>
+                $i + 1,
+
+            'order_id' =>
+                $r->order_id,
+
+            'deskripsi' =>
+                $r->deskripsi,
+
+            'sto' =>
+                $normalizeSto($r->sto),
+
+            'tgl' =>
+                $tanggalObj
+                    ? $tanggalObj->translatedFormat('d F Y')
+                    : '-',
+
+            'tgl_iso' =>
+                $tanggalObj
+                    ? $tanggalObj->format('Y-m-d')
+                    : '',
+
+            'pic' =>
+                $r->pic,
+
+            'status_re' =>
+                $statusReDisplay,
+
+            'status_re_filter' =>
+                $statusReFilter,
+
+            'status' =>
+                $r->status,
+
+            'ket' =>
+                $r->ket,
+
+            'baru' =>
+                $isBaru,
+
+        ];
+
+    })->all();
+
+
+    /*
+    |--------------------------------------------------------------------------
+
+    | TOTAL DATA
+    |--------------------------------------------------------------------------
+
+    */
+
+    $totalData =
+        \App\Models\FalloutData::count();
+
+
+    /*
+    |--------------------------------------------------------------------------
+
+    | LIST STO
+    |--------------------------------------------------------------------------
+
+    */
+
+    $stoList =
+        collect($rows)
+            ->map(function ($row) {
+                return strtoupper(
+                    trim((string) ($row['sto'] ?? ''))
+                );
+            })
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values();
+
+
+    /*
+    |--------------------------------------------------------------------------
+
+    | BULAN
+    |--------------------------------------------------------------------------
+
+    */
+
+    $bulanOptions = [
+
+        '01' => 'Januari',
+        '02' => 'Februari',
+        '03' => 'Maret',
+        '04' => 'April',
+        '05' => 'Mei',
+        '06' => 'Juni',
+        '07' => 'Juli',
+        '08' => 'Agustus',
+        '09' => 'September',
+        '10' => 'Oktober',
+        '11' => 'November',
+        '12' => 'Desember',
+
+    ];
+
+
+    /*
+    |--------------------------------------------------------------------------
+
+    | LABEL STATUS
+    |--------------------------------------------------------------------------
+
+    */
+
+    $statusReLabels = [
+
+        'resolved'     => 'RESOLVED',
+        'eskalasi'     => 'ESKALASI',
+        'cancel'       => 'CANCEL',
+        'eskalasi_dit' => 'ESKALASI DIT',
+        'close'        => 'CLOSE',
+        'lainnya'      => 'LAINNYA',
+
+    ];
+
 @endphp
 
-<div class="ed-wrap">
 
-  {{-- LOADING KHUSUS HALAMAN EDIT DATA --}}
-  <div class="ed-page-loading" id="edPageLoading" aria-live="polite" aria-label="Memuat Edit Data">
-    <div class="ed-page-loading-card">
-      <div class="ed-page-loading-logo">
-        <span>TF</span>
-      </div>
-      <div class="ed-page-loading-spinner" aria-hidden="true"></div>
-      <div class="ed-page-loading-title">Memuat Edit Data</div>
-      <div class="ed-page-loading-subtitle">Menyiapkan data {{ $witel }}</div>
-    </div>
-  </div>
-  <div class="ed-head">
-    <div>
-      <h2>Edit Data</h2>
-      <p>Menampilkan {{ count($rows) }} dari {{ $totalData }} total data — {{ $witel }}</p>
-    </div>
+<div class="df-wrap">
 
-    <button type="button" class="ed-add-btn" id="edAddBtn">
-      + Tambah Data
-    </button>
-  </div>
-
-  <div class="ed-panel">
-    <div class="ed-filter-row">
-      <div class="ed-field">
-        <label for="edFilterTanggal">Tanggal:</label>
-
-        {{-- KOSONG = semua tanggal tampil saat pertama kali buka halaman --}}
-        <input type="date" id="edFilterTanggal" value="">
-      </div>
-
-      <select class="ed-sto-select" id="edFilterSto" aria-label="Filter STO">
-        <option value="semua">Semua STO</option>
-
-        @foreach ($stoOptions as $sto)
-          <option value="{{ $sto }}">{{ $sto }}</option>
-        @endforeach
-      </select>
+    {{-- Loading khusus halaman Detail Fallout --}}
+    <div
+        class="df-page-loading"
+        id="dfPageLoading"
+        aria-live="polite"
+        aria-label="Memuat Detail Fallout"
+    >
+        <div class="df-page-loading-card">
+            <div class="df-page-loading-logo">TF</div>
+            <div
+                class="df-page-loading-spinner"
+                aria-hidden="true"
+            ></div>
+            <div class="df-page-loading-title">
+                Memuat Detail Fallout
+            </div>
+            <div class="df-page-loading-subtitle">
+                Menyiapkan data {{ $witel }}
+            </div>
+        </div>
     </div>
 
-    <div class="ed-status-row" id="edStatusRow">
-      <button type="button"
-              class="ed-status-btn active"
-              data-filter="semua">
-        Semua
-      </button>
+    {{-- Pasang overlay sebelum browser membangun tabel panjang (mis. 284 data). --}}
+    <script>
+    (function () {
+        'use strict';
 
-      <button type="button"
-              class="ed-status-btn ed-status-resolved"
-              data-filter="resolved">
-        RESOLVED
-      </button>
+        var loader = document.getElementById('dfPageLoading');
+        var wrap = loader ? loader.closest('.df-wrap') : null;
 
-      <button type="button"
-              class="ed-status-btn ed-status-cancel"
-              data-filter="cancel">
-        Cancel
-      </button>
+        if (!loader || !wrap || loader.dataset.dfBootstrapped === '1') {
+            return;
+        }
+        loader.dataset.dfBootstrapped = '1';
 
-      <button type="button"
-              class="ed-status-btn ed-status-eskalasidit"
-              data-filter="eskalasi_dit">
-        Eskalasi DIT
-      </button>
+        var root = document.documentElement;
+        var body = document.body;
+        var target =
+            wrap.closest('.content-shell') ||
+            document.getElementById('contentShell') ||
+            wrap.closest('.content') ||
+            wrap;
 
-      <button type="button"
-              class="ed-status-btn ed-status-close"
-              data-filter="close">
-        Close
-      </button>
-    </div>
+        if (!target) {
+            return;
+        }
 
-    <div class="ed-meta" id="edMeta">
-      Semua tanggal · {{ count($rows) }} data ditemukan
-    </div>
-  </div>
+        var hadShellClass = target.classList.contains('df-detail-loading-shell');
+        var finished = false;
+        var removeTimer = null;
 
-  <div class="ed-table-wrap">
-    <table class="ed-table" id="edTable">
-      <thead>
-        <tr>
-          <th>No</th>
-          <th>No/Order ID</th>
-          <th>STO</th>
-          <th>Tanggal</th>
-          <th>PIC</th>
-          <th>Status</th>
-          <th>KET</th>
-          <th>Aksi</th>
-        </tr>
-      </thead>
+        /*
+         * Gaya darurat ditambahkan ke head sebelum parsing tabel lanjut.
+         * Meniru Total Rekap: overlay satu lapis, penuh, dan center-flex.
+         * Style bersyarat pada class sehingga tidak mengubah halaman lain.
+         */
+        var earlyStyle = document.getElementById('dfEarlyLoadingStyle');
+        if (!earlyStyle) {
+            earlyStyle = document.createElement('style');
+            earlyStyle.id = 'dfEarlyLoadingStyle';
+            earlyStyle.textContent = [
+                'html.dfLoadingLock,body.dfLoadingLock{overflow:hidden!important;cursor:none!important}',
+                'html.dfLoadingLock *,body.dfLoadingLock *,html.dfLoadingLock *::before,html.dfLoadingLock *::after,body.dfLoadingLock *::before,body.dfLoadingLock *::after{cursor:none!important}',
+                '.df-detail-loading-shell{position:relative!important;isolation:isolate!important;overflow:hidden!important}',
+                '.df-detail-loading-shell>.df-page-loading{position:absolute!important;inset:0!important;z-index:2147483647!important;display:flex!important;align-items:center!important;justify-content:center!important;box-sizing:border-box!important;padding:24px!important;overflow:hidden!important;user-select:none!important;pointer-events:auto!important;touch-action:none!important;overscroll-behavior:none!important;cursor:none!important;background:rgba(250,247,247,.995)!important;backdrop-filter:blur(8px)!important;-webkit-backdrop-filter:blur(8px)!important;border-radius:22px!important}',
+                '.df-detail-loading-shell>.df-page-loading .df-page-loading-card{position:relative!important;top:auto!important;width:min(300px,100%)!important;margin:0 auto!important;box-sizing:border-box!important}',
+                '.df-detail-loading-shell>.content{overflow:hidden!important;cursor:none!important}',
+                '.df-page-loading,.df-page-loading *,.df-page-loading *::before,.df-page-loading *::after{cursor:none!important}'
+            ].join('\n');
+            document.head.appendChild(earlyStyle);
+        }
 
-      <tbody id="edTableBody">
-        @forelse ($rows as $r)
+        /* Portal loader ke content shell sebelum konten panjang ditampilkan. */
+        if (loader.parentElement !== target) {
+            target.insertBefore(loader, target.firstChild);
+        }
 
-          <tr
-            data-id="{{ $r['row_id'] }}"
-            data-status="{{ $r['status_re'] }}"
-            data-order_id="{{ $r['order_id'] }}"
-            data-deskripsi="{{ $r['deskripsi'] }}"
-            data-sto="{{ $r['sto'] }}"
-            data-tgl="{{ $r['tgl'] }}"
-            data-pic="{{ $r['pic'] }}"
-            data-status_re="{{ $r['status_re'] }}"
-            data-status_detail="{{ $r['status'] }}"
-            data-ket="{{ $r['ket'] }}"
-          >
+        target.classList.add('df-detail-loading-shell');
+        root.classList.add('dfLoadingLock');
+        body.classList.add('dfLoadingLock');
 
-            <td class="ed-no">
-              {{ $r['no'] }}
-            </td>
+        function stopMove(event) {
+            event.preventDefault();
+        }
 
-            <td class="ed-order-id">
-              {{ $r['order_id'] }}
-            </td>
+        function stopScrollKeys(event) {
+            if ([
+                'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown',
+                'Home', 'End', ' '
+            ].indexOf(event.key) !== -1) {
+                event.preventDefault();
+            }
+        }
 
-            <td>
-              {{ $r['sto'] }}
-            </td>
+        loader.addEventListener('wheel', stopMove, { passive: false });
+        loader.addEventListener('touchmove', stopMove, { passive: false });
+        document.addEventListener('keydown', stopScrollKeys, true);
 
-            <td>
-              {{
-                $r['tgl']
-                  ? \Carbon\Carbon::parse($r['tgl'])->translatedFormat('d F Y')
-                  : '-'
-              }}
-            </td>
+        function hideDetailLoader() {
+            if (finished) {
+                return;
+            }
+            finished = true;
 
-            <td>
-              {{ $r['pic'] }}
-            </td>
+            loader.classList.add('is-hidden');
+            loader.removeEventListener('wheel', stopMove);
+            loader.removeEventListener('touchmove', stopMove);
+            document.removeEventListener('keydown', stopScrollKeys, true);
+            window.removeEventListener('pageshow', onPageShow);
 
-            <td>
-              <span class="ed-pill ed-pill-{{ $r['status_re'] }}">
-                {{ $statusReLabels[$r['status_re']] ?? strtoupper($r['status_re']) }}
-              </span>
-            </td>
+            root.classList.remove('dfLoadingLock');
+            body.classList.remove('dfLoadingLock');
 
-            <td>
-              {{ $r['ket'] }}
-            </td>
+            if (!hadShellClass) {
+                target.classList.remove('df-detail-loading-shell');
+            }
 
-            <td class="ed-aksi">
+            if (removeTimer) {
+                window.clearTimeout(removeTimer);
+            }
+            removeTimer = window.setTimeout(function () {
+                if (loader.parentNode) {
+                    loader.parentNode.removeChild(loader);
+                }
+            }, 150);
+        }
 
-              <button
-                type="button"
-                class="ed-icon-btn ed-edit-btn"
-                title="Edit"
-              >
-                ✏️
-              </button>
+        function onPageShow(event) {
+            if (event.persisted) {
+                hideDetailLoader();
+            }
+        }
 
-              <button
-                type="button"
-                class="ed-icon-btn ed-delete-btn"
-                title="Hapus"
-              >
-                🗑️
-              </button>
+        window.addEventListener('pageshow', onPageShow);
 
-            </td>
-
-          </tr>
-
-        @empty
-
-          <tr>
-            <td colspan="8" class="ed-empty">
-              Belum ada data untuk witel ini.
-              Coba upload data dulu lewat menu "Upload Data".
-            </td>
-          </tr>
-
-        @endforelse
-      </tbody>
-    </table>
-  </div>
-</div>
+        /* Waktu pendek seperti Total Rekap; timeout kedua hanya sebagai pengaman. */
+        window.setTimeout(hideDetailLoader, 1000);
+        window.setTimeout(hideDetailLoader, 5000);
+    })();
+    </script>
 
 
-{{-- ============================================================
-     MODAL TAMBAH / EDIT
-============================================================ --}}
+    {{-- =========================================================
+         HEADER
+         ========================================================= --}}
 
-<div class="ed-modal-overlay" id="edModalOverlay">
+    <div class="df-head">
 
-  <div class="ed-modal">
+        <div>
 
-    <div class="ed-modal-head">
+            <h2>
+                Detail Fallout
+            </h2>
 
-      <h3 id="edModalTitle">
-        Tambah Data Baru
-      </h3>
+            <p>
+                Menampilkan
+                {{ count($rows) }}
+                dari
+                {{ $totalData }}
+                data
+            </p>
 
-      <button
-        type="button"
-        class="ed-modal-close"
-        id="edModalClose"
-      >
-        ✕
-      </button>
+        </div>
 
     </div>
 
 
-    <form id="edForm" class="ed-modal-body">
+    {{-- =========================================================
+         INFO BARU
+         ========================================================= --}}
 
-      {{-- ORDER ID --}}
-      <div class="ed-form-group">
+    <div class="df-badge-info">
 
-        <label for="edOrderId">
-          No/Order ID
-        </label>
+        <span class="df-badge">
+            BARU
+        </span>
 
-        <input
-          type="text"
-          id="edOrderId"
-          placeholder="Masukkan ID"
+        <span>
+            = Data yang diupload pada
+            {{ now()->translatedFormat('d F Y') }}
+        </span>
+
+    </div>
+
+
+    {{-- =========================================================
+         FILTER PANEL
+         ========================================================= --}}
+
+    <div class="df-panel">
+
+
+        {{-- TABS --}}
+
+        <div
+            class="df-tabs"
+            id="dfTabs"
         >
 
-      </div>
+            <button
+                type="button"
+                class="df-tab active"
+                data-range="tanggal"
+            >
+                Per Tanggal
+            </button>
 
+            <button
+                type="button"
+                class="df-tab"
+                data-range="bulan"
+            >
+                Per Bulan
+            </button>
 
-      {{-- DESKRIPSI --}}
-      <div class="ed-form-group">
-
-        <label for="edDeskripsi">
-          Deskripsi
-        </label>
-
-        <textarea
-          id="edDeskripsi"
-          rows="3"
-          placeholder="Masukkan deskripsi"
-        ></textarea>
-
-      </div>
-
-
-      {{-- STO + TANGGAL --}}
-      <div class="ed-form-row">
-
-        <div class="ed-form-group">
-
-          <label for="edSto">
-            STO
-          </label>
-
-          <select id="edSto">
-
-            <option value="">
-              Pilih STO...
-            </option>
-
-            @foreach ($stoOptions as $sto)
-
-              <option value="{{ $sto }}">
-                {{ $sto }}
-              </option>
-
-            @endforeach
-
-            <option value="lainnya">
-              Lainnya...
-            </option>
-
-          </select>
+            <button
+                type="button"
+                class="df-tab"
+                data-range="tahun"
+            >
+                Per Tahun
+            </button>
 
         </div>
 
 
-        <div class="ed-form-group">
+        {{-- FILTER --}}
 
-          <label for="edTanggal">
-            Tanggal
-          </label>
+        <div class="df-filter-row">
 
-          <input
-            type="date"
-            id="edTanggal"
-          >
+
+            {{-- TANGGAL --}}
+
+            <div
+                class="df-field"
+                data-range-field="tanggal"
+            >
+
+                <label>
+                    Tanggal:
+                </label>
+
+                <input
+                    type="date"
+                    id="dfTanggal"
+                    value=""
+                >
+
+            </div>
+
+
+            {{-- BULAN --}}
+
+            <div
+                class="df-field"
+                data-range-field="bulan"
+                style="display:none;"
+            >
+
+                <label>
+                    Bulan:
+                </label>
+
+                <select id="dfBulan">
+
+                    @foreach ($bulanOptions as $val => $label)
+
+                        <option
+                            value="{{ $val }}"
+                            {{ $val === now()->format('m') ? 'selected' : '' }}
+                        >
+                            {{ $label }}
+                        </option>
+
+                    @endforeach
+
+                </select>
+
+
+                <select id="dfTahunBulan">
+
+                    <option value="2025">
+                        2025
+                    </option>
+
+                    <option
+                        value="2026"
+                        selected
+                    >
+                        2026
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            {{-- TAHUN --}}
+
+            <div
+                class="df-field"
+                data-range-field="tahun"
+                style="display:none;"
+            >
+
+                <label>
+                    Tahun:
+                </label>
+
+                <select id="dfTahunOnly">
+
+                    <option value="2025">
+                        2025
+                    </option>
+
+                    <option
+                        value="2026"
+                        selected
+                    >
+                        2026
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            {{-- STO --}}
+
+            <select
+                class="df-sto-select"
+                id="dfSto"
+            >
+
+                <option value="">
+                    Semua STO
+                </option>
+
+                @foreach ($stoList as $sto)
+
+                    <option value="{{ trim(strtoupper($sto)) }}">
+                        {{ trim(strtoupper($sto)) }}
+                    </option>
+
+                @endforeach
+
+            </select>
 
         </div>
 
-      </div>
 
+        {{-- FILTER STATUS --}}
 
-      {{-- PIC + RESOLVED/ESKALASI --}}
-      <div class="ed-form-row">
+        <div
+            class="df-status-row"
+            id="dfStatusRow"
+        >
 
-        <div class="ed-form-group">
+            <button
+                type="button"
+                class="df-status-btn active"
+                data-filter="semua"
+            >
+                Semua
+            </button>
 
-          <label for="edPic">
-            PIC
-          </label>
+            <button
+                type="button"
+                class="df-status-btn df-status-resolved"
+                data-filter="resolved"
+            >
+                RESOLVED
+            </button>
 
-          <input
-            type="text"
-            id="edPic"
-            placeholder="Nama PIC"
-          >
+            <button
+                type="button"
+                class="df-status-btn df-status-cancel"
+                data-filter="cancel"
+            >
+                Cancel
+            </button>
 
-        </div>
+            <button
+                type="button"
+                class="df-status-btn df-status-eskalasidit"
+                data-filter="eskalasi_dit"
+            >
+                Eskalasi DIT
+            </button>
 
-
-        <div class="ed-form-group">
-
-          <label for="edStatusRe">
-            RESOLVED/ESKALASI
-          </label>
-
-          <select id="edStatusRe">
-
-            <option value="">
-              Pilih...
-            </option>
-
-            <option value="resolved">
-              RESOLVED
-            </option>
-
-            <option value="cancel">
-              CANCEL
-            </option>
-
-            <option value="eskalasi_dit">
-              ESKALASI DIT
-            </option>
-
-            <option value="close">
-              CLOSE
-            </option>
-
-            <option value="lainnya">
-              ESKALASI / LAINNYA
-            </option>
-
-          </select>
-
-        </div>
-
-      </div>
-
-
-      {{-- STATUS + KET --}}
-      <div class="ed-form-row">
-
-        <div class="ed-form-group">
-
-          <label for="edStatusDetail">
-            Status
-          </label>
-
-          <select id="edStatusDetail">
-
-            <option value="">
-              Pilih...
-            </option>
-
-            <option value="completed">
-              COMPLETED
-            </option>
-
-            <option value="process_oss">
-              Process OSS
-            </option>
-
-          </select>
+            <button
+                type="button"
+                class="df-status-btn df-status-close"
+                data-filter="close"
+            >
+                Close
+            </button>
 
         </div>
 
 
-        <div class="ed-form-group">
+        {{-- META --}}
 
-          <label for="edKet">
-            KET
-          </label>
-
-          <input
-            type="text"
-            id="edKet"
-            placeholder="Keterangan"
-          >
-
+        <div
+            class="df-meta"
+            id="dfMeta"
+        >
+            Menampilkan data · Semua tanggal
+            ·
+            {{ count($rows) }}
+            data ditemukan
         </div>
-
-      </div>
-
-    </form>
-
-
-    <div class="ed-modal-footer">
-
-      <button
-        type="button"
-        class="ed-btn-cancel"
-        id="edBtnCancel"
-      >
-        Batal
-      </button>
-
-      <button
-        type="button"
-        class="ed-btn-save"
-        id="edBtnSave"
-      >
-        💾 Simpan
-      </button>
 
     </div>
 
-  </div>
+
+    {{-- =========================================================
+         TABLE
+         ========================================================= --}}
+
+    <div class="df-table-wrap">
+
+        <table
+            class="df-table"
+            id="dfTable"
+        >
+
+            <thead>
+
+                <tr>
+
+                    <th>
+                        No
+                    </th>
+
+                    <th>
+                        No/Order ID
+                    </th>
+
+                    <th>
+                        Deskripsi
+                    </th>
+
+                    <th>
+                        STO ↕
+                    </th>
+
+                    <th>
+                        Tgl Fallout ↓
+                    </th>
+
+                    <th>
+                        PIC ↕
+                    </th>
+
+                    <th>
+                        RESOLVED/ESK ↕
+                    </th>
+
+                    <th>
+                        Status ↕
+                    </th>
+
+                    <th>
+                        KET
+                    </th>
+
+                </tr>
+
+            </thead>
+
+
+            <tbody id="dfTableBody">
+
+                @forelse ($rows as $r)
+
+                    <tr
+                        data-status="{{ $r['status_re_filter'] }}"
+                        data-sto="{{ $r['sto'] }}"
+                        data-date="{{ $r['tgl_iso'] }}"
+                        data-order-id="{{ $r['order_id'] }}"
+                        data-description="{{ $r['deskripsi'] }}"
+                    >
+
+
+                        {{-- =====================================
+                             NO
+                             ===================================== --}}
+
+                        <td class="df-no-cell">
+
+                            <div class="df-no-wrap">
+
+                                <span class="df-number">
+                                    {{ $r['no'] }}
+                                </span>
+
+
+                                @if ($r['baru'])
+
+                                    <span class="df-badge df-badge-sm">
+                                        BARU
+                                    </span>
+
+                                @endif
+
+                            </div>
+
+                        </td>
+
+
+                        {{-- =====================================
+                             NO / ORDER ID
+                             ===================================== --}}
+
+                        <td class="df-order-cell">
+
+                            <div class="df-preview-line">
+
+
+                                <span
+                                    class="df-order-text"
+                                    title="{{ $r['order_id'] }}"
+                                >
+                                    {{ $r['order_id'] ?: '-' }}
+                                </span>
+
+
+                                @if (!empty($r['order_id']))
+
+                                    <button
+                                        type="button"
+                                        class="df-view-btn"
+                                        data-preview="order"
+                                        title="Lihat Order ID lengkap"
+                                    >
+
+                                        <svg
+                                            width="14"
+                                            height="14"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                        >
+
+                                            <path
+                                                d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"
+                                                stroke="currentColor"
+                                                stroke-width="1.8"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            />
+
+                                            <circle
+                                                cx="12"
+                                                cy="12"
+                                                r="2.5"
+                                                stroke="currentColor"
+                                                stroke-width="1.8"
+                                            />
+
+                                        </svg>
+
+                                    </button>
+
+                                @endif
+
+                            </div>
+
+                        </td>
+
+
+                        {{-- =====================================
+                             DESKRIPSI
+                             ===================================== --}}
+
+                        <td class="df-description-cell">
+
+                            <div class="df-preview-line">
+
+
+                                <span
+                                    class="df-description-text"
+                                    title="{{ $r['deskripsi'] }}"
+                                >
+                                    {{ $r['deskripsi'] ?: '-' }}
+                                </span>
+
+
+                                @if (!empty($r['deskripsi']))
+
+                                    <button
+                                        type="button"
+                                        class="df-view-btn"
+                                        data-preview="description"
+                                        title="Lihat deskripsi lengkap"
+                                    >
+
+                                        <svg
+                                            width="14"
+                                            height="14"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                        >
+
+                                            <path
+                                                d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"
+                                                stroke="currentColor"
+                                                stroke-width="1.8"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            />
+
+                                            <circle
+                                                cx="12"
+                                                cy="12"
+                                                r="2.5"
+                                                stroke="currentColor"
+                                                stroke-width="1.8"
+                                            />
+
+                                        </svg>
+
+                                    </button>
+
+                                @endif
+
+                            </div>
+
+                        </td>
+
+
+                        {{-- =====================================
+                             STO
+                             ===================================== --}}
+
+                        <td class="df-nowrap">
+                            {{ $r['sto'] ?: '-' }}
+                        </td>
+
+
+                        {{-- =====================================
+                             TANGGAL
+                             ===================================== --}}
+
+                        <td class="df-nowrap">
+                            {{ $r['tgl'] ?: '-' }}
+                        </td>
+
+
+                        {{-- =====================================
+                             PIC
+                             ===================================== --}}
+
+                        <td class="df-nowrap">
+                            {{ $r['pic'] ?: '-' }}
+                        </td>
+
+
+                        {{-- =====================================
+                             RESOLVED / ESKALASI
+                             ===================================== --}}
+
+                        <td>
+
+                            @if ($r['status_re'] === 'RESOLVED')
+
+                                <span class="df-pill df-pill-resolved">
+                                    RESOLVED
+                                </span>
+
+                            @elseif ($r['status_re'] === 'ESKALASI')
+
+                                <span class="df-pill df-pill-eskalasi">
+                                    ESKALASI
+                                </span>
+
+                            @elseif ($r['status_re'] === 'CANCEL')
+
+                                <span class="df-pill df-pill-cancel">
+                                    CANCEL
+                                </span>
+
+                            @elseif ($r['status_re'] === 'ESKALASI_DIT')
+
+                                <span class="df-pill df-pill-eskalasi_dit">
+                                    ESKALASI DIT
+                                </span>
+
+                            @elseif ($r['status_re'] === 'CLOSE')
+
+                                <span class="df-pill df-pill-close">
+                                    CLOSE
+                                </span>
+
+                            @else
+
+                                <span class="df-pill">
+                                    {{ $r['status_re'] }}
+                                </span>
+
+                            @endif
+
+                        </td>
+
+
+                        {{-- =====================================
+                             STATUS
+                             ===================================== --}}
+
+                        <td>
+
+                            @php
+
+                                $statusValue =
+                                    strtolower(
+                                        trim(
+                                            (string)
+                                            ($r['status'] ?? '')
+                                        )
+                                    );
+
+                            @endphp
+
+
+                            @if ($statusValue === 'completed')
+
+                                <span class="df-status-badge df-completed">
+                                    COMPLETED
+                                </span>
+
+                            @elseif ($statusValue === 'process_oss')
+
+                                <span class="df-status-badge df-process">
+                                    Process OSS
+                                </span>
+
+                            @else
+
+                                <span class="df-status-badge df-other">
+                                    {{ $r['status'] ?: '-' }}
+                                </span>
+
+                            @endif
+
+                        </td>
+
+
+                        {{-- =====================================
+                             KET
+                             ===================================== --}}
+
+                        <td class="df-ket">
+                            {{ $r['ket'] ?: '-' }}
+                        </td>
+
+
+                    </tr>
+
+                @empty
+
+                    <tr>
+
+                        <td
+                            colspan="9"
+                            class="df-empty"
+                        >
+                            Belum ada data untuk witel ini.
+                            Coba upload data dulu lewat menu
+                            "Upload Data".
+                        </td>
+
+                    </tr>
+
+                @endforelse
+
+            </tbody>
+
+        </table>
+
+
+        <div
+            class="df-no-match"
+            id="dfNoMatch"
+            style="display:none;"
+        >
+            Tidak ada data yang cocok dengan filter ini.
+        </div>
+
+    </div>
 
 </div>
 
 
+{{-- =============================================================
+     MODAL PREVIEW
+     ============================================================= --}}
 
-{{-- UI ALERT / CONFIRM --}}
-<div class="ed-ui-alert-overlay" id="edUiAlertOverlay" aria-hidden="true">
-  <div class="ed-ui-alert-card" role="dialog" aria-modal="true" aria-labelledby="edUiAlertTitle">
-    <div class="ed-ui-alert-icon" id="edUiAlertIcon"></div>
-    <h3 id="edUiAlertTitle">Informasi</h3>
-    <div class="ed-ui-alert-message" id="edUiAlertMessage"></div>
-    <div class="ed-ui-alert-actions" id="edUiAlertActions">
-      <button type="button" class="ed-ui-alert-btn ed-ui-alert-cancel" id="edUiAlertCancel">Batal</button>
-      <button type="button" class="ed-ui-alert-btn ed-ui-alert-confirm" id="edUiAlertConfirm">OK</button>
+<div
+    class="df-modal-overlay"
+    id="dfPreviewModal"
+>
+
+    <div
+        class="df-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dfModalTitle"
+    >
+
+
+        <div class="df-modal-head">
+
+            <h3
+                class="df-modal-title"
+                id="dfModalTitle"
+            >
+                Preview
+            </h3>
+
+
+            <button
+                type="button"
+                class="df-modal-close"
+                id="dfModalClose"
+            >
+                ×
+            </button>
+
+        </div>
+
+
+        <div class="df-modal-body">
+
+            <div
+                class="df-modal-content"
+                id="dfModalContent"
+            ></div>
+
+        </div>
+
+
+        <div class="df-modal-footer">
+
+            <button
+                type="button"
+                class="df-copy-btn"
+                id="dfCopyBtn"
+            >
+                Copy
+            </button>
+
+        </div>
+
     </div>
-  </div>
+
 </div>
+
 
 <style>
 
-  /* ============================================================
-     LOADING KHUSUS HALAMAN EDIT DATA
-     Tidak menutupi Dashboard / sidebar.
-     ============================================================ */
-  .ed-wrap{
-    position:relative;
-    min-height:100%;
-  }
+/* =========================================================
+   WRAPPER
+   ========================================================= */
 
-  .ed-page-loading{
-    position:absolute;
-    inset:0;
-    z-index:1200;
+.df-wrap{
+    position:relative;
+    width:100%;
+    min-height:calc(100vh - 250px);
+    padding:8px 6px 28px;
+    box-sizing:border-box;
+}
+
+
+
+  .df-page-loading{
+    position:absolute !important;
+    inset:0 !important;
+    width:100% !important;
+    height:100% !important;
+    min-height:100% !important;
+    z-index:2147483647 !important;
     display:flex;
     align-items:center;
     justify-content:center;
     padding:28px;
-    background:rgba(250,247,247,.94);
-    backdrop-filter:blur(8px);
-    -webkit-backdrop-filter:blur(8px);
+    box-sizing:border-box;
+    overflow:hidden;
+    user-select:none;
+    pointer-events:auto;
+    touch-action:none;
+    overscroll-behavior:none;
+    background:rgba(250,247,247,.985);
     border-radius:22px;
-    transition:opacity .28s ease, visibility .28s ease;
-  }
+    cursor:none !important;
+}
 
-  .ed-page-loading.is-hidden{
-    opacity:0;
-    visibility:hidden;
-    pointer-events:none;
-  }
+.df-page-loading.is-hidden{
+    display:none !important;
+    opacity:0 !important;
+    visibility:hidden !important;
+    pointer-events:none !important;
+}
 
-  .ed-page-loading-card{
-    width:min(320px, 100%);
+/* Saat loader tampil, kursor dan scroll dinonaktifkan seperti Upload Data. */
+html.dfLoadingLock,
+body.dfLoadingLock{
+    overflow:hidden !important;
+    cursor:none !important;
+}
+
+html.dfLoadingLock *,
+body.dfLoadingLock *{
+    cursor:none !important;
+}
+
+.content-shell.df-detail-loading-shell{
+    position:relative !important;
+    isolation:isolate !important;
+}
+
+.content-shell.df-detail-loading-shell > .df-page-loading{
+    position:absolute !important;
+    inset:0 !important;
+    z-index:2147483647 !important;
+}
+
+.df-page-loading,
+.df-page-loading *{
+    cursor:none !important;
+}
+
+.df-page-loading-card{
+    width:min(320px,100%);
     padding:28px 24px 24px;
     text-align:center;
-    border:1px solid rgba(255,255,255,.9);
+    border:1px solid rgba(255,255,255,.95);
     border-radius:18px;
-    background:rgba(255,255,255,.88);
-    box-shadow:0 24px 60px -30px rgba(58,4,16,.30);
-  }
+    background:#fff;
+    box-shadow:0 18px 45px -28px rgba(58,4,16,.24);
+    cursor:none !important;
+}
 
-  .ed-page-loading-logo{
+.df-page-loading-logo{
     width:52px;
     height:52px;
     margin:0 auto 14px;
@@ -541,10 +1373,11 @@
     font-size:17px;
     font-weight:700;
     letter-spacing:.03em;
-    box-shadow:0 12px 24px -12px rgba(200,16,46,.75);
-  }
+    box-shadow:0 10px 22px -14px rgba(200,16,46,.65);
+    cursor:none !important;
+}
 
-  .ed-page-loading-spinner{
+.df-page-loading-spinner{
     width:30px;
     height:30px;
     margin:0 auto 14px;
@@ -552,128 +1385,191 @@
     border-top-color:#C8102E;
     border-right-color:#8A0F26;
     border-radius:50%;
-    animation:edPageLoadingSpin .8s linear infinite;
-  }
+    animation:dfPageLoadingSpin .72s linear infinite;
+}
 
-  .ed-page-loading-title{
+.df-page-loading-title{
     font-family:'Space Grotesk',sans-serif;
-    font-size:15px;
+    font-size:14px;
     font-weight:700;
     color:#20161A;
-  }
+    cursor:none !important;
+}
 
-  .ed-page-loading-subtitle{
-    margin-top:6px;
+.df-page-loading-subtitle{
+    margin-top:5px;
     font-family:'Inter',sans-serif;
-    font-size:11.5px;
-    color:#7A6B6F;
-  }
+    font-size:11px;
+    line-height:1.5;
+    color:#817377;
+    cursor:none !important;
+}
 
-  @keyframes edPageLoadingSpin{
-    to{ transform:rotate(360deg); }
-  }
+@keyframes dfPageLoadingSpin{
+    to{transform:rotate(360deg);}
+}
 
-
-  .ed-wrap{
-    width:100%;
-    padding:8px 6px 28px;
-  }
-
-  .ed-head{
-    display:flex;
-    align-items:flex-start;
-    justify-content:space-between;
-    gap:14px;
-    flex-wrap:wrap;
-  }
-
-  .ed-head h2{
-    font-family:'Space Grotesk', sans-serif;
+/* Saat loader aktif, cursor disembunyikan hanya dalam area Detail Fallout. */
+.df-wrap.df-detail-loading,
+.df-wrap.df-detail-loading *{
+    cursor:none !important;
+}
+.df-head h2{
+    margin:0;
+    font-family:'Space Grotesk',sans-serif;
     font-size:22px;
-    font-weight:700;
-    color:#C8102E;
-  }
+    font-weight:600;
+    color:#20161A;
+}
 
-  .ed-head p{
+
+.df-head p{
     margin-top:4px;
     font-size:12.5px;
     color:#7A6B6F;
-  }
+}
 
-  .ed-add-btn{
-    border:none;
-    cursor:pointer;
-    padding:11px 20px;
-    border-radius:11px;
-    font-size:13px;
-    font-weight:700;
+
+/* =========================================================
+   BARU
+   ========================================================= */
+
+.df-badge-info{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-top:16px;
+    margin-bottom:18px;
+    font-size:12.5px;
+    color:#7A6B6F;
+}
+
+
+.df-badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    background:#C8102E;
     color:#fff;
-    font-family:'Inter', sans-serif;
-    background:linear-gradient(120deg, #C8102E, #8A0F26);
-    box-shadow:0 12px 26px -12px rgba(200,16,46,0.7);
+    font-size:10px;
+    font-weight:700;
+    letter-spacing:.03em;
+    padding:4px 10px;
+    border-radius:999px;
     white-space:nowrap;
-  }
+}
 
 
-  .ed-panel{
-    background:rgba(255,255,255,0.7);
-    border:1px solid rgba(255,255,255,0.8);
+.df-badge-sm{
+    font-size:8.5px;
+    padding:2px 7px;
+}
+
+
+/* =========================================================
+   FILTER PANEL
+   ========================================================= */
+
+.df-panel{
+    background:rgba(255,255,255,.78);
+    border:1px solid rgba(255,255,255,.85);
     border-radius:16px;
     padding:20px;
-    margin-top:18px;
     margin-bottom:18px;
-  }
+}
 
-  .ed-filter-row{
+
+.df-tabs{
+    display:inline-flex;
+    gap:4px;
+    padding:5px;
+    border-radius:12px;
+    background:rgba(255,255,255,.6);
+    border:1px solid #E7DEDD;
+    margin-bottom:18px;
+}
+
+
+.df-tab{
+    border:none;
+    background:none;
+    cursor:pointer;
+    padding:9px 16px;
+    border-radius:9px;
+    font-size:12.5px;
+    font-weight:600;
+    color:#7A6B6F;
+    font-family:'Inter',sans-serif;
+}
+
+
+.df-tab.active{
+    background:#3A0410;
+    color:#fff;
+}
+
+
+.df-filter-row{
     display:flex;
     align-items:center;
     gap:14px;
     margin-bottom:16px;
     flex-wrap:wrap;
-  }
+}
 
-  .ed-field{
+
+.df-field{
     display:flex;
     align-items:center;
     gap:8px;
-  }
+}
 
-  .ed-field label{
+
+.df-field label{
     font-size:13px;
     font-weight:600;
     color:#20161A;
-  }
+}
 
-  .ed-field input[type="date"]{
+
+.df-field input[type="date"],
+.df-field select{
     padding:9px 12px;
     border-radius:9px;
     border:1.3px solid #E7DEDD;
     background:#fff;
     font-size:13px;
     color:#20161A;
-    font-family:'Inter', sans-serif;
-  }
+    font-family:'Inter',sans-serif;
+}
 
-  .ed-sto-select{
+
+.df-sto-select{
     padding:9px 14px;
     border-radius:9px;
     border:1.3px solid #E7DEDD;
     background:#fff;
     font-size:13px;
     color:#20161A;
-    font-family:'Inter', sans-serif;
+    font-family:'Inter',sans-serif;
     min-width:140px;
-  }
+    margin-left:auto;
+}
 
 
-  .ed-status-row{
+/* =========================================================
+   STATUS FILTER
+   ========================================================= */
+
+.df-status-row{
     display:flex;
     gap:8px;
     flex-wrap:wrap;
     margin-bottom:14px;
-  }
+}
 
-  .ed-status-btn{
+
+.df-status-btn{
     border:1.3px solid #E7DEDD;
     background:#fff;
     cursor:pointer;
@@ -681,1496 +1577,1739 @@
     border-radius:9px;
     font-size:12px;
     font-weight:700;
-    letter-spacing:0.02em;
     color:#7A6B6F;
-    font-family:'Inter', sans-serif;
-  }
+    font-family:'Inter',sans-serif;
+}
 
-  .ed-status-btn.active{
+
+.df-status-btn.active{
     background:#3A0410;
     color:#fff;
     border-color:#3A0410;
-  }
+}
 
-  .ed-status-btn.ed-status-resolved.active{
+
+.df-status-btn.df-status-resolved.active{
     background:#1E7A46;
     border-color:#1E7A46;
-  }
+}
 
-  .ed-status-btn.ed-status-cancel.active{
+
+.df-status-btn.df-status-cancel.active{
     background:#7A6B6F;
     border-color:#7A6B6F;
-  }
+}
 
-  .ed-status-btn.ed-status-eskalasidit.active{
+
+.df-status-btn.df-status-eskalasidit.active{
     background:#B4651E;
     border-color:#B4651E;
-  }
+}
 
-  .ed-status-btn.ed-status-close.active{
+
+.df-status-btn.df-status-close.active{
     background:#3A0410;
     border-color:#3A0410;
-  }
+}
 
-  .ed-meta{
+
+.df-meta{
     font-size:11.5px;
     color:#7A6B6F;
-  }
+}
 
 
-  .ed-table-wrap{
-    background:rgba(255,255,255,0.7);
-    border:1px solid rgba(255,255,255,0.8);
-    border-radius:16px;
-    overflow-x:auto;
-    max-height:460px;
-    overflow-y:auto;
-  }
+/* =========================================================
+   TABLE WRAPPER
+   ========================================================= */
 
-  .ed-table{
+.df-table-wrap{
     width:100%;
-    border-collapse:collapse;
-    font-size:12.5px;
-    min-width:820px;
-  }
+    background:rgba(255,255,255,.90);
+    border:1px solid #E7DEDD;
+    border-radius:16px;
+    overflow:auto;
+    max-height:520px;
+    position:relative;
+}
 
-  .ed-table thead th{
+
+/* =========================================================
+   TABLE
+   ========================================================= */
+
+.df-table{
+    width:100%;
+    min-width:1280px;
+    border-collapse:separate;
+    border-spacing:0;
+    table-layout:fixed;
+    font-size:12px;
+}
+
+
+/* =========================================================
+   HEADER TABLE
+   ========================================================= */
+
+.df-table thead th{
     position:sticky;
     top:0;
-    z-index:2;
-    background:#5C0A1B;
+    z-index:10;
+    background:#760014;
+    color:#fff;
     text-align:left;
-    padding:12px 16px;
+    padding:12px 14px;
     font-size:11px;
     font-weight:700;
-    color:#fff;
     white-space:nowrap;
-  }
+    border-bottom:1px solid #620012;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
 
-  .ed-table tbody td{
-    padding:14px 16px;
+
+/* =========================================================
+   WIDTH KOLOM
+   =========================================================
+   Tanggal dan PIC diperlebar supaya tidak berdempetan.
+   Semua isi kolom juga dipotong dengan ellipsis bila terlalu panjang.
+   */
+
+.df-table th:nth-child(1),
+.df-table td:nth-child(1){
+    width:55px;
+}
+
+
+.df-table th:nth-child(2),
+.df-table td:nth-child(2){
+    width:185px;
+}
+
+
+.df-table th:nth-child(3),
+.df-table td:nth-child(3){
+    width:315px;
+}
+
+
+.df-table th:nth-child(4),
+.df-table td:nth-child(4){
+    width:78px;
+}
+
+
+.df-table th:nth-child(5),
+.df-table td:nth-child(5){
+    width:145px;
+}
+
+
+.df-table th:nth-child(6),
+.df-table td:nth-child(6){
+    width:135px;
+}
+
+
+.df-table th:nth-child(7),
+.df-table td:nth-child(7){
+    width:160px;
+}
+
+
+.df-table th:nth-child(8),
+.df-table td:nth-child(8){
+    width:175px;
+}
+
+
+.df-table th:nth-child(9),
+.df-table td:nth-child(9){
+    width:90px;
+}
+
+
+/* =========================================================
+   BODY
+   ========================================================= */
+
+.df-table tbody tr{
+    height:60px;
+}
+
+
+.df-table tbody td{
+    height:60px;
+    padding:10px 14px;
     border-bottom:1px solid #F1EAE9;
     color:#20161A;
-  }
+    vertical-align:middle;
+    background:#fff;
+}
 
-  .ed-table tbody tr:hover{
-    background:rgba(200,16,46,0.04);
-  }
 
-  .ed-no{
-    color:#C8102E;
-    font-weight:700;
-  }
+.df-table tbody tr:hover td{
+    background:#FFFAFB;
+}
 
-  .ed-order-id{
-    color:#7A6B6F;
+
+/* =========================================================
+   NO
+   ========================================================= */
+
+.df-no-cell{
     white-space:nowrap;
-  }
+}
 
 
-  .ed-pill{
-    display:inline-block;
+.df-no-wrap{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    min-width:0;
+}
+
+
+/* =========================================================
+   ORDER ID
+   ========================================================= */
+
+.df-order-cell{
+    overflow:hidden;
+}
+
+
+.df-preview-line{
+    width:100%;
+    display:flex;
+    align-items:center;
+    gap:7px;
+    min-width:0;
+}
+
+
+.df-order-text{
+    display:block;
+    flex:1;
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    color:#65595E;
+    line-height:1.4;
+}
+
+
+/* =========================================================
+   DESKRIPSI
+   ========================================================= */
+
+.df-description-cell{
+    overflow:hidden;
+}
+
+
+.df-description-text{
+    display:block;
+    flex:1;
+    min-width:0;
+    max-width:100%;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    color:#31282C;
+    line-height:1.4;
+}
+
+
+/* =========================================================
+   BUTTON EYE
+   ========================================================= */
+
+.df-view-btn{
+    width:27px;
+    height:27px;
+    min-width:27px;
+    padding:0;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    border:none;
+    background:transparent;
+    color:#9A8D92;
+    border-radius:7px;
+    cursor:pointer;
+    flex-shrink:0;
+    transition:
+        background .15s ease,
+        color .15s ease,
+        transform .15s ease;
+}
+
+
+.df-view-btn:hover{
+    background:#F8E8EB;
+    color:#C8102E;
+}
+
+
+.df-view-btn:active{
+    transform:scale(.95);
+}
+
+
+/* =========================================================
+   KOLOM BIASA
+   =========================================================
+   INI YANG MEMASTIKAN TANGGAL TIDAK "BOCOR" KE KOLOM PIC.
+   */
+
+.df-nowrap{
+    display:block;
+    width:100%;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+
+
+/* =========================================================
+   PILL
+   ========================================================= */
+
+.df-pill{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:24px;
     padding:4px 10px;
     border-radius:999px;
-    font-size:10.5px;
-    font-weight:700;
-    letter-spacing:0.02em;
-    background:#F1EAE9;
-    color:#7A6B6F;
-  }
-
-  .ed-pill-resolved{
-    background:rgba(30,122,70,0.12);
-    color:#1E7A46;
-  }
-
-  .ed-pill-cancel{
-    background:rgba(122,107,111,0.14);
-    color:#7A6B6F;
-  }
-
-  .ed-pill-eskalasi_dit{
-    background:rgba(180,101,30,0.14);
-    color:#B4651E;
-  }
-
-  .ed-pill-close{
-    background:rgba(58,4,16,0.1);
-    color:#3A0410;
-  }
-
-  .ed-pill-lainnya{
-    background:rgba(180,101,30,0.14);
-    color:#B4651E;
-  }
-
-
-  .ed-aksi{
     white-space:nowrap;
-  }
-
-  .ed-icon-btn{
-    border:none;
-    background:none;
-    cursor:pointer;
-    font-size:14px;
-    padding:4px 6px;
-    border-radius:6px;
-  }
-
-  .ed-icon-btn:hover{
-    background:rgba(200,16,46,0.08);
-  }
+    font-size:10px;
+    font-weight:700;
+    max-width:100%;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
 
 
-  .ed-empty{
+.df-pill-resolved{
+    background:#E7F6ED;
+    color:#16804A;
+}
+
+
+.df-pill-eskalasi{
+    background:#FCE8EC;
+    color:#C8102E;
+}
+
+
+.df-pill-eskalasi_dit{
+    background:#FFF1DE;
+    color:#B4651E;
+}
+
+
+.df-pill-cancel{
+    background:#F0EEEE;
+    color:#75686D;
+}
+
+
+.df-pill-close{
+    background:#ECE7E9;
+    color:#4A1824;
+}
+
+
+/* =========================================================
+   STATUS
+   ========================================================= */
+
+.df-status-badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:24px;
+    padding:4px 10px;
+    border-radius:999px;
+    white-space:nowrap;
+    font-size:10px;
+    font-weight:700;
+    max-width:100%;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+
+.df-completed{
+    background:#E4F6ED;
+    color:#087A42;
+}
+
+
+.df-process{
+    background:#FFF1D9;
+    color:#A55700;
+}
+
+
+.df-other{
+    background:#F0EEEE;
+    color:#74686C;
+}
+
+
+/* =========================================================
+   KET
+   ========================================================= */
+
+.df-ket{
+    max-width:90px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+
+
+/* =========================================================
+   EMPTY
+   ========================================================= */
+
+.df-empty{
+    text-align:center !important;
+    padding:40px !important;
+    color:#7A6B6F !important;
+}
+
+
+.df-no-match{
     text-align:center;
-    padding:30px;
+    padding:32px;
     color:#7A6B6F;
-  }
+    font-size:12px;
+}
 
 
-  /* ============================================================
-     MODAL
-  ============================================================ */
+/* =========================================================
+   MODAL
+   ========================================================= */
 
-  .ed-modal-overlay{
+.df-modal-overlay{
     display:none;
     position:fixed;
     inset:0;
-    z-index:9999;
-    background:rgba(32,22,26,0.55);
+    z-index:999999;
     align-items:center;
     justify-content:center;
     padding:20px;
-  }
+    background:rgba(25,12,16,.55);
+    backdrop-filter:blur(2px);
+}
 
-  .ed-modal-overlay.open{
+
+.df-modal-overlay.open{
     display:flex;
-  }
+}
 
-  .ed-modal{
-    width:100%;
-    max-width:560px;
+
+.df-modal{
+    width:min(680px,95vw);
+    max-height:88vh;
     background:#fff;
     border-radius:18px;
     overflow:hidden;
-    max-height:90vh;
-    display:flex;
-    flex-direction:column;
-    box-shadow:0 40px 90px -30px rgba(0,0,0,0.4);
-  }
+    box-shadow:
+        0 35px 90px rgba(0,0,0,.30);
+    animation:dfModalIn .18s ease-out;
+}
 
-  .ed-modal-head{
+
+@keyframes dfModalIn{
+
+    from{
+        opacity:0;
+        transform:
+            translateY(8px)
+            scale(.98);
+    }
+
+    to{
+        opacity:1;
+        transform:
+            translateY(0)
+            scale(1);
+    }
+
+}
+
+
+/* =========================================================
+   MODAL HEADER
+   ========================================================= */
+
+.df-modal-head{
     display:flex;
     align-items:center;
     justify-content:space-between;
-    padding:18px 24px;
-    background:linear-gradient(120deg, #8A0F26, #3A0410);
-  }
-
-  .ed-modal-head h3{
-    font-family:'Space Grotesk', sans-serif;
-    font-size:16px;
-    font-weight:700;
-    color:#fff;
-  }
-
-  .ed-modal-close{
-    border:none;
-    background:rgba(255,255,255,0.15);
-    color:#fff;
-    width:28px;
-    height:28px;
-    border-radius:8px;
-    cursor:pointer;
-    font-size:13px;
-  }
-
-  .ed-modal-body{
-    padding:22px 24px;
-    overflow-y:auto;
-  }
-
-  .ed-form-group{
-    margin-bottom:16px;
-  }
-
-  .ed-form-row{
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:14px;
-  }
-
-  .ed-form-group label{
-    display:block;
-    font-size:12.5px;
-    font-weight:700;
-    color:#20161A;
-    margin-bottom:6px;
-  }
-
-  .ed-form-group input,
-  .ed-form-group select,
-  .ed-form-group textarea{
-    width:100%;
-    padding:10px 13px;
-    border-radius:9px;
-    border:1.3px solid #E7DEDD;
-    background:#FBF9F7;
-    font-size:13px;
-    color:#20161A;
-    font-family:'Inter', sans-serif;
-    resize:vertical;
-    box-sizing:border-box;
-  }
-
-  .ed-form-group input:focus,
-  .ed-form-group select:focus,
-  .ed-form-group textarea:focus{
-    outline:none;
-    border-color:#C8102E;
-  }
-
-
-  .ed-modal-footer{
-    display:flex;
-    justify-content:flex-end;
-    gap:10px;
-    padding:16px 24px;
-    border-top:1px solid #E7DEDD;
-  }
-
-  .ed-btn-cancel{
-    border:1.3px solid #E7DEDD;
+    gap:15px;
+    padding:18px 20px;
+    border-bottom:1px solid #ECE5E5;
     background:#fff;
-    cursor:pointer;
-    padding:10px 18px;
-    border-radius:10px;
-    font-size:13px;
+}
+
+
+.df-modal-title{
+    margin:0;
+    font-family:'Space Grotesk',sans-serif;
+    font-size:17px;
     font-weight:700;
-    color:#7A6B6F;
-    font-family:'Inter', sans-serif;
-  }
-
-  .ed-btn-save{
-    border:none;
-    cursor:pointer;
-    padding:10px 20px;
-    border-radius:10px;
-    font-size:13px;
-    font-weight:700;
-    color:#fff;
-    font-family:'Inter', sans-serif;
-    background:linear-gradient(120deg, #C8102E, #8A0F26);
-  }
-
-  .ed-btn-save:disabled{
-    opacity:.65;
-    cursor:not-allowed;
-  }
+    color:#2C2528;
+}
 
 
-  @media (max-width: 640px){
-
-    .ed-form-row{
-      grid-template-columns:1fr;
-    }
-
-  }
-
-
-  /* UI ALERT / CONFIRM */
-  html.ed-ui-lock,
-  body.ed-ui-lock{
-    overflow:hidden !important;
-  }
-
-  .ed-ui-alert-overlay{
-    display:none;
-    position:fixed !important;
-    inset:0 !important;
-    width:100vw !important;
-    height:100vh !important;
-    z-index:2147483000 !important;
-    background:rgba(20,16,18,.56);
-    backdrop-filter:blur(7px);
-    -webkit-backdrop-filter:blur(7px);
+.df-modal-close{
+    width:32px;
+    height:32px;
+    display:flex;
     align-items:center;
     justify-content:center;
-    padding:16px;
-    overflow:hidden !important;
-    box-sizing:border-box;
-  }
-  .ed-ui-alert-overlay.open{
-    display:flex;
-    animation:edUiAlertFadeIn .18s ease;
-  }
-  .ed-ui-alert-card{
-    width:min(440px, calc(100vw - 32px));
-    max-width:440px;
-    max-height:calc(100vh - 32px);
-    overflow:hidden;
-    background:#fff;
-    border-radius:22px;
-    padding:24px 22px 20px;
-    box-shadow:0 34px 90px rgba(0,0,0,.30);
-    text-align:center;
-    animation:edUiAlertPop .18s ease;
-    box-sizing:border-box;
-  }
-  .ed-ui-alert-icon{
-    width:54px;height:54px;margin:0 auto 14px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-    background:rgba(200,16,46,.08);color:#C8102E;
-  }
-  .ed-ui-alert-icon.success{background:rgba(30,122,70,.08);color:#16A34A;}
-  .ed-ui-alert-icon.error{background:rgba(200,16,46,.08);color:#C8102E;}
-  .ed-ui-alert-icon svg{width:27px;height:27px;display:block;stroke:currentColor;}
-  .ed-ui-alert-card h3{margin:0 0 8px;font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:700;color:#252331;}
-  .ed-ui-alert-message{
-    min-height:42px;
-    margin:0 auto 20px;
-    max-width:380px;
-    font-family:'Inter',sans-serif;
-    font-size:12.5px;
-    line-height:1.65;
-    color:#7A808B;
-    overflow-wrap:anywhere;
-    word-break:break-word;
-  }
-  .ed-ui-alert-message strong{color:#2C3442;font-weight:800;}
-  .ed-ui-alert-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-  .ed-ui-alert-actions.single{grid-template-columns:1fr;}
-  .ed-ui-alert-btn{height:42px;border-radius:11px;font-family:'Inter',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:.18s ease;}
-  .ed-ui-alert-cancel{border:1px solid #E5E0E1;background:#fff;color:#6F7177;}
-  .ed-ui-alert-cancel:hover{background:#F8F6F6;}
-  .ed-ui-alert-confirm{border:1px solid #B40000;background:#B40000;color:#fff;box-shadow:0 10px 22px -14px rgba(180,0,0,.8);}
-  .ed-ui-alert-confirm:hover{background:#980000;border-color:#980000;}
-  .ed-ui-alert-confirm.success-btn{background:#650014;border-color:#650014;}
-  @keyframes edUiAlertFadeIn{from{opacity:0}to{opacity:1}}
-  @keyframes edUiAlertPop{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
-  @media(max-width:520px){.ed-ui-alert-card{max-width:calc(100vw - 32px);padding:20px 18px 18px;}}
+    padding:0;
+    border:none;
+    border-radius:8px;
+    background:#F5F0F0;
+    color:#8D7F84;
+    cursor:pointer;
+    font-size:20px;
+    line-height:1;
+}
 
+
+.df-modal-close:hover{
+    background:#F8E8EB;
+    color:#C8102E;
+}
+
+
+/* =========================================================
+   MODAL BODY
+   ========================================================= */
+
+.df-modal-body{
+    padding:20px;
+}
+
+
+.df-modal-content{
+    padding:17px;
+    min-height:90px;
+    max-height:390px;
+    overflow-y:auto;
+    background:#F8F7F7;
+    border:1px solid #EEE7E7;
+    border-radius:12px;
+    color:#4D4448;
+    font-size:13px;
+    line-height:1.7;
+    white-space:pre-wrap;
+    word-break:break-word;
+}
+
+
+/* =========================================================
+   MODAL FOOTER
+   ========================================================= */
+
+.df-modal-footer{
+    display:flex;
+    align-items:center;
+    justify-content:flex-end;
+    padding:14px 20px;
+    border-top:1px solid #ECE5E5;
+}
+
+
+.df-copy-btn{
+    border:none;
+    padding:10px 24px;
+    border-radius:9px;
+    background:#8D0015;
+    color:#fff;
+    font-size:12px;
+    font-weight:700;
+    cursor:pointer;
+}
+
+
+.df-copy-btn:hover{
+    background:#710010;
+}
+
+
+/* =========================================================
+   RESPONSIVE
+   ========================================================= */
+
+@media (max-width:900px){
+
+    .df-table{
+        min-width:1280px;
+    }
+
+}
+
+
+@media (max-width:640px){
+
+    .df-panel{
+        padding:15px;
+    }
+
+
+    .df-filter-row{
+        align-items:flex-start;
+        flex-direction:column;
+    }
+
+
+    .df-sto-select{
+        margin-left:0;
+        width:100%;
+    }
+
+
+    .df-modal{
+        width:95vw;
+    }
+
+}
+/* =========================================================
+   FINAL TABLE FIX — SESUAI TABEL WEB ASLI
+   ========================================================= */
+
+.content .df-table-wrap,
+.df-wrap .df-table-wrap{
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    overflow-x:auto !important;
+    overflow-y:auto !important;
+    box-sizing:border-box !important;
+}
+
+.content .df-table,
+.df-wrap .df-table{
+    display:table !important;
+    width:100% !important;
+    min-width:0 !important;
+    max-width:none !important;
+    table-layout:fixed !important;
+    border-collapse:separate !important;
+    border-spacing:0 !important;
+}
+
+.content .df-table thead,
+.df-wrap .df-table thead{display:table-header-group !important;}
+
+.content .df-table tbody,
+.df-wrap .df-table tbody{display:table-row-group !important;}
+
+.content .df-table tr,
+.df-wrap .df-table tr{display:table-row !important;}
+
+.content .df-table th,
+.content .df-table td,
+.df-wrap .df-table th,
+.df-wrap .df-table td{
+    display:table-cell !important;
+    float:none !important;
+    box-sizing:border-box !important;
+    vertical-align:middle !important;
+}
+
+/* Proporsi tepat 100%. */
+.df-wrap .df-table th:nth-child(1),
+.df-wrap .df-table td:nth-child(1){width:6% !important;}
+.df-wrap .df-table th:nth-child(2),
+.df-wrap .df-table td:nth-child(2){width:16% !important;}
+.df-wrap .df-table th:nth-child(3),
+.df-wrap .df-table td:nth-child(3){width:23% !important;}
+.df-wrap .df-table th:nth-child(4),
+.df-wrap .df-table td:nth-child(4){width:7% !important;}
+.df-wrap .df-table th:nth-child(5),
+.df-wrap .df-table td:nth-child(5){width:11% !important;}
+.df-wrap .df-table th:nth-child(6),
+.df-wrap .df-table td:nth-child(6){width:8% !important;}
+.df-wrap .df-table th:nth-child(7),
+.df-wrap .df-table td:nth-child(7){width:14% !important;}
+.df-wrap .df-table th:nth-child(8),
+.df-wrap .df-table td:nth-child(8){width:10% !important;}
+.df-wrap .df-table th:nth-child(9),
+.df-wrap .df-table td:nth-child(9){width:5% !important;}
+
+.df-wrap .df-table thead th{
+    height:38px !important;
+    padding:10px 9px !important;
+    font-size:10px !important;
+    line-height:1.15 !important;
+    white-space:nowrap !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+}
+
+.df-wrap .df-table tbody tr{
+    height:56px !important;
+}
+
+.df-wrap .df-table tbody td{
+    height:56px !important;
+    padding:8px 9px !important;
+    font-size:10.5px !important;
+    line-height:1.3 !important;
+    vertical-align:middle !important;
+    overflow:hidden !important;
+}
+
+.df-wrap .df-table td:nth-child(1),
+.df-wrap .df-table td:nth-child(4),
+.df-wrap .df-table td:nth-child(5),
+.df-wrap .df-table td:nth-child(6),
+.df-wrap .df-table td:nth-child(7),
+.df-wrap .df-table td:nth-child(8),
+.df-wrap .df-table td:nth-child(9){
+    white-space:nowrap !important;
+}
+
+.df-wrap .df-order-cell,
+.df-wrap .df-description-cell{
+    min-width:0 !important;
+    overflow:hidden !important;
+}
+
+.df-wrap .df-preview-line{
+    width:100% !important;
+    min-width:0 !important;
+    display:flex !important;
+    align-items:center !important;
+    gap:5px !important;
+    overflow:hidden !important;
+}
+
+.df-wrap .df-order-text{
+    width:1px !important;
+    min-width:0 !important;
+    flex:1 1 auto !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+    white-space:nowrap !important;
+    font-size:10px !important;
+}
+
+.df-wrap .df-description-text{
+    width:1px !important;
+    min-width:0 !important;
+    flex:1 1 auto !important;
+    display:-webkit-box !important;
+    -webkit-box-orient:vertical !important;
+    -webkit-line-clamp:2 !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+    white-space:normal !important;
+    max-height:2.6em !important;
+    font-size:10px !important;
+}
+
+.df-wrap .df-view-btn{
+    width:22px !important;
+    min-width:22px !important;
+    height:22px !important;
+    flex:0 0 22px !important;
+    padding:0 !important;
+}
+
+.df-wrap .df-no-wrap{
+    display:flex !important;
+    flex-direction:column !important;
+    align-items:flex-start !important;
+    justify-content:center !important;
+    gap:3px !important;
+    min-width:0 !important;
+    width:100% !important;
+    padding-right:0 !important;
+}
+
+.df-wrap .df-badge-sm{
+    display:inline-flex !important;
+    width:auto !important;
+    max-width:100% !important;
+    padding:2px 6px !important;
+    font-size:8px !important;
+    line-height:1 !important;
+}
+
+.df-wrap .df-view-btn svg{
+    width:12px !important;
+    height:12px !important;
+}
+
+.df-wrap .df-nowrap,
+.df-wrap .df-ket{
+    width:100% !important;
+    min-width:0 !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+    white-space:nowrap !important;
+}
+
+.df-wrap .df-pill,
+.df-wrap .df-status-badge{
+    display:inline-flex !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    padding:4px 8px !important;
+    font-size:9px !important;
+    line-height:1.1 !important;
+    white-space:nowrap !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+}
+
+@media (max-width:1100px){
+    .content .df-table-wrap,
+    .df-wrap .df-table-wrap{
+        width:100% !important;
+        max-width:100% !important;
+        overflow-x:auto !important;
+    }
+
+    .content .df-table,
+    .df-wrap .df-table{
+        width:100% !important;
+        min-width:0 !important;
+    }
+}
+
+
+/* =========================================================
+   DETAIL FALLOUT — LOADING SAMA POLANYA DENGAN TOTAL REKAP
+   Overlay dipasang pada content-shell sebelum tabel panjang.
+   ========================================================= */
+html.dfLoadingLock,
+body.dfLoadingLock {
+    overflow: hidden !important;
+    cursor: none !important;
+}
+
+html.dfLoadingLock *,
+body.dfLoadingLock *,
+html.dfLoadingLock *::before,
+html.dfLoadingLock *::after,
+body.dfLoadingLock *::before,
+body.dfLoadingLock *::after,
+.df-detail-loading-shell,
+.df-detail-loading-shell *,
+.df-detail-loading-shell *::before,
+.df-detail-loading-shell *::after {
+    cursor: none !important;
+}
+
+.df-detail-loading-shell {
+    position: relative !important;
+    isolation: isolate !important;
+    overflow: hidden !important;
+}
+
+.df-detail-loading-shell > .content {
+    overflow: hidden !important;
+    cursor: none !important;
+}
+
+.df-detail-loading-shell > .df-page-loading {
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 2147483647 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+    padding: 24px !important;
+    overflow: hidden !important;
+    user-select: none !important;
+    pointer-events: auto !important;
+    touch-action: none !important;
+    overscroll-behavior: none !important;
+    cursor: none !important;
+    background: rgba(250, 247, 247, .995) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    border-radius: 22px !important;
+    transition: opacity .18s ease, visibility .18s ease !important;
+}
+
+.df-detail-loading-shell > .df-page-loading .df-page-loading-card {
+    position: relative !important;
+    top: auto !important;
+    width: min(300px, 100%) !important;
+    margin: 0 auto !important;
+    padding: 24px 22px !important;
+    box-sizing: border-box !important;
+}
+
+.df-page-loading,
+.df-page-loading *,
+.df-page-loading *::before,
+.df-page-loading *::after {
+    cursor: none !important;
+}
+
+.df-page-loading.is-hidden {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
 </style>
 
 
 <script>
 
-  (function () {
+(function () {
+
+    /*
+    |--------------------------------------------------------------------------
+
+    | FILTER ELEMENT
+
+    |--------------------------------------------------------------------------
+
+    */
+
+    const tabs =
+        document.querySelectorAll(
+            '#dfTabs .df-tab'
+        );
 
 
-    // ============================================================
-    // LOADING KHUSUS EDIT DATA
-    // ============================================================
-    const edPageLoading =
-      document.getElementById('edPageLoading');
+    const fields =
+        document.querySelectorAll(
+            '.df-field[data-range-field]'
+        );
 
-    if (edPageLoading){
-      setTimeout(function(){
-        edPageLoading.classList.add('is-hidden');
-      }, 1000);
-    }
-
-    // ============================================================
-    // ELEMENT
-    // ============================================================
 
     const statusButtons =
-      document.querySelectorAll(
-        '#edStatusRow .ed-status-btn'
-      );
+        document.querySelectorAll(
+            '#dfStatusRow .df-status-btn'
+        );
+
+
+    const rows =
+        document.querySelectorAll(
+            '#dfTableBody tr[data-status]'
+        );
+
+
+    const noMatchEl =
+        document.getElementById(
+            'dfNoMatch'
+        );
+
 
     const meta =
-      document.getElementById('edMeta');
-
-    const filterTanggal =
-      document.getElementById('edFilterTanggal');
-
-    const filterSto =
-      document.getElementById('edFilterSto');
+        document.getElementById(
+            'dfMeta'
+        );
 
 
-    const overlay =
-      document.getElementById('edModalOverlay');
+    const dfTanggal =
+        document.getElementById(
+            'dfTanggal'
+        );
+
+
+    const dfBulan =
+        document.getElementById(
+            'dfBulan'
+        );
+
+
+    const dfTahunBulan =
+        document.getElementById(
+            'dfTahunBulan'
+        );
+
+
+    const dfTahunOnly =
+        document.getElementById(
+            'dfTahunOnly'
+        );
+
+
+    const dfSto =
+        document.getElementById(
+            'dfSto'
+        );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | MODAL
+    |--------------------------------------------------------------------------
+    */
+
+    const previewModal =
+        document.getElementById(
+            'dfPreviewModal'
+        );
+
 
     const modalTitle =
-      document.getElementById('edModalTitle');
-
-    const addBtn =
-      document.getElementById('edAddBtn');
-
-    const closeBtn =
-      document.getElementById('edModalClose');
-
-    const cancelBtn =
-      document.getElementById('edBtnCancel');
-
-    const saveBtn =
-      document.getElementById('edBtnSave');
-
-    const tableBody =
-      document.getElementById('edTableBody');
-
-    const form =
-      document.getElementById('edForm');
-
-
-    const fOrderId =
-      document.getElementById('edOrderId');
-
-    const fDeskripsi =
-      document.getElementById('edDeskripsi');
-
-    const fSto =
-      document.getElementById('edSto');
-
-    const fTanggal =
-      document.getElementById('edTanggal');
-
-    const fPic =
-      document.getElementById('edPic');
-
-    const fStatusRe =
-      document.getElementById('edStatusRe');
-
-    const fStatusDetail =
-      document.getElementById('edStatusDetail');
-
-    const fKet =
-      document.getElementById('edKet');
-
-
-    const statusReLabel = {
-
-      resolved: 'RESOLVED',
-
-      cancel: 'CANCEL',
-
-      eskalasi_dit: 'ESKALASI DIT',
-
-      close: 'CLOSE',
-
-      lainnya: 'ESKALASI'
-
-    };
-
-
-    let editingRow = null;
-
-
-    // ============================================================
-    // MODAL DIPINDAH KE BODY
-    // ============================================================
-
-    document.body.appendChild(overlay);
-
-
-    // UI ALERT / CONFIRM HELPERS
-    const uiAlertOverlay = document.getElementById('edUiAlertOverlay');
-    const uiAlertIcon = document.getElementById('edUiAlertIcon');
-    const uiAlertTitle = document.getElementById('edUiAlertTitle');
-    const uiAlertMessage = document.getElementById('edUiAlertMessage');
-    const uiAlertActions = document.getElementById('edUiAlertActions');
-    const uiAlertCancel = document.getElementById('edUiAlertCancel');
-    const uiAlertConfirm = document.getElementById('edUiAlertConfirm');
-    let uiAlertResolver = null;
-
-    // Modal notifikasi/konfirmasi harus berada langsung di <body>
-    // agar menutup seluruh halaman, bukan hanya area dashboard.
-    if (uiAlertOverlay && uiAlertOverlay.parentElement !== document.body) {
-      document.body.appendChild(uiAlertOverlay);
-    }
-
-    function escapeUiHtml(value){
-      return String(value ?? '')
-        .replace(/&/g,'&amp;')
-        .replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;')
-        .replace(/"/g,'&quot;')
-        .replace(/'/g,'&#039;');
-    }
-
-    function uiIcon(type){
-      if(type === 'success'){
-        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 9.2 17 19 7"/></svg>';
-      }
-      if(type === 'error'){
-        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.5h.01"/></svg>';
-      }
-      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8.5V6a3 3 0 0 1 6 0v2.5"/><path d="M5 8.5h14l-1 11H6l-1-11Z"/><path d="M9 11.5v4"/><path d="M15 11.5v4"/></svg>';
-    }
-
-    function openUiAlert({type='error',title='Informasi',message='',confirmText='OK',cancelText='Batal',showCancel=false}){
-      return new Promise(resolve => {
-        uiAlertResolver = resolve;
-        uiAlertIcon.className = `ed-ui-alert-icon ${type}`;
-        uiAlertIcon.innerHTML = uiIcon(type);
-        uiAlertTitle.textContent = title;
-        uiAlertMessage.innerHTML = message;
-        uiAlertCancel.textContent = cancelText;
-        uiAlertConfirm.textContent = confirmText;
-        uiAlertCancel.style.display = showCancel ? '' : 'none';
-        uiAlertActions.classList.toggle('single', !showCancel);
-        uiAlertConfirm.classList.toggle('success-btn', type === 'success');
-        document.documentElement.classList.add('ed-ui-lock');
-        document.body.classList.add('ed-ui-lock');
-        uiAlertOverlay.classList.add('open');
-        uiAlertOverlay.setAttribute('aria-hidden','false');
-        setTimeout(() => uiAlertConfirm.focus(), 20);
-      });
-    }
-
-    function closeUiAlert(value){
-      uiAlertOverlay.classList.remove('open');
-      uiAlertOverlay.setAttribute('aria-hidden','true');
-      document.documentElement.classList.remove('ed-ui-lock');
-      document.body.classList.remove('ed-ui-lock');
-      if(uiAlertResolver){
-        const resolve = uiAlertResolver;
-        uiAlertResolver = null;
-        resolve(value);
-      }
-    }
-
-    function showUiAlert(options){
-      return openUiAlert({...options, showCancel:false});
-    }
-
-    function showUiConfirm(options){
-      return openUiAlert({...options, showCancel:true, type:'error'});
-    }
-
-    uiAlertConfirm.addEventListener('click', () => closeUiAlert(true));
-    uiAlertCancel.addEventListener('click', () => closeUiAlert(false));
-    uiAlertOverlay.addEventListener('click', event => {
-      if(event.target === uiAlertOverlay) closeUiAlert(false);
-    });
-    document.addEventListener('keydown', event => {
-      if(event.key === 'Escape' && uiAlertOverlay.classList.contains('open')) closeUiAlert(false);
-    });
-
-    // ============================================================
-    // TANGGAL HARI INI
-    // ============================================================
-
-    function todayIso(){
-
-      const now = new Date();
-
-      const local =
-        new Date(
-          now.getTime()
-          -
-          (
-            now.getTimezoneOffset()
-            *
-            60000
-          )
-        );
-
-      return local
-        .toISOString()
-        .slice(0,10);
-
-    }
-
-
-    // ============================================================
-    // FORMAT TANGGAL INDONESIA
-    // ============================================================
-
-    function formatTanggal(value){
-
-      if (!value){
-        return '-';
-      }
-
-      const parts =
-        value
-          .split('-')
-          .map(Number);
-
-      if (
-        parts.length !== 3 ||
-        parts.some(Number.isNaN)
-      ){
-        return value;
-      }
-
-      const date =
-        new Date(
-          parts[0],
-          parts[1] - 1,
-          parts[2]
-        );
-
-      return date.toLocaleDateString(
-        'id-ID',
-        {
-          day:'numeric',
-          month:'long',
-          year:'numeric'
-        }
-      );
-
-    }
-
-
-    // ============================================================
-    // STATUS FILTER AKTIF
-    // ============================================================
-
-    function getActiveStatusFilter(){
-
-      const active =
-        document.querySelector(
-          '#edStatusRow .ed-status-btn.active'
-        );
-
-      return active
-        ? active.dataset.filter
-        : 'semua';
-
-    }
-
-
-    // ============================================================
-    // APPLY SEMUA FILTER
-    // ============================================================
-
-    function applyFilter(){
-
-      const statusFilter =
-        getActiveStatusFilter();
-
-      const tanggalFilter =
-        filterTanggal.value;
-
-      const stoFilter =
-        filterSto.value;
-
-
-      const rows =
-        document.querySelectorAll(
-          '#edTableBody tr[data-status]'
+        document.getElementById(
+            'dfModalTitle'
         );
 
 
-      let shown = 0;
+    const modalContent =
+        document.getElementById(
+            'dfModalContent'
+        );
 
 
-      rows.forEach(row => {
-
-        const statusMatch =
-          statusFilter === 'semua' ||
-          row.dataset.status === statusFilter;
-
-
-        const dateMatch =
-          !tanggalFilter ||
-          row.dataset.tgl === tanggalFilter;
+    const modalClose =
+        document.getElementById(
+            'dfModalClose'
+        );
 
 
-        const rowSto =
-          (row.dataset.sto || '')
-            .trim()
-            .toUpperCase();
+    const copyBtn =
+        document.getElementById(
+            'dfCopyBtn'
+        );
 
 
-        const selectedSto =
-          (stoFilter || 'semua')
-            .trim()
-            .toUpperCase();
+    /*
+    |--------------------------------------------------------------------------
+    | PINDAHKAN MODAL KE BODY
+    |--------------------------------------------------------------------------
+    |
+    | Ini penting supaya modal tidak terikat ukuran .content dashboard.
+    |
+    */
+
+    if (
+        previewModal &&
+        previewModal.parentElement !== document.body
+    ) {
+
+        document.body.appendChild(
+            previewModal
+        );
+
+    }
 
 
-        const stoMatch =
-          selectedSto === 'SEMUA' ||
-          rowSto === selectedSto;
+    /*
+    |--------------------------------------------------------------------------
+    | RANGE AKTIF
+    |--------------------------------------------------------------------------
+    */
+
+    let activeRange =
+        'tanggal';
 
 
-        const match =
-          statusMatch &&
-          dateMatch &&
-          stoMatch;
+    /*
+    |--------------------------------------------------------------------------
+    | SWITCH RANGE
+    |--------------------------------------------------------------------------
+    */
+
+    function switchRange(tab) {
+
+        activeRange =
+            tab.dataset.range;
 
 
-        row.style.display =
-          match
-            ? ''
-            : 'none';
+        tabs.forEach(
+            function (t) {
+
+                t.classList.remove(
+                    'active'
+                );
+
+            }
+        );
 
 
-        if (match){
-          shown++;
+        tab.classList.add(
+            'active'
+        );
+
+
+        fields.forEach(
+            function (field) {
+
+                field.style.display =
+                    field.dataset.rangeField
+                    === activeRange
+                        ? 'flex'
+                        : 'none';
+
+            }
+        );
+
+
+        applyFilters();
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | FORMAT TANGGAL
+    |--------------------------------------------------------------------------
+    */
+
+    function formatTanggalId(
+        isoDate
+    ) {
+
+        if (!isoDate) {
+            return '';
         }
 
-      });
+
+        const bulanNama = [
+
+            'Januari',
+            'Februari',
+            'Maret',
+            'April',
+            'Mei',
+            'Juni',
+            'Juli',
+            'Agustus',
+            'September',
+            'Oktober',
+            'November',
+            'Desember',
+
+        ];
 
 
-      let dateText =
-        'Semua tanggal';
+        const parts =
+            isoDate.split('-');
 
 
-      if (tanggalFilter){
-
-        dateText =
-          formatTanggal(
-            tanggalFilter
-          );
-
-      }
+        if (parts.length !== 3) {
+            return isoDate;
+        }
 
 
-      let statusText =
-        statusFilter === 'semua'
-          ? 'Semua status'
-          : (
-              statusReLabel[statusFilter]
-              ||
-              statusFilter
+        const year =
+            parts[0];
+
+
+        const month =
+            parseInt(
+                parts[1],
+                10
             );
 
 
-      let stoText =
-        stoFilter === 'semua'
-          ? 'Semua STO'
-          : stoFilter;
+        const day =
+            parseInt(
+                parts[2],
+                10
+            );
 
 
-      meta.textContent =
-        `${dateText} · ${statusText} · ${stoText} · ${shown} data ditemukan`;
-
-    }
-
-
-    // ============================================================
-    // EVENT FILTER STATUS
-    // ============================================================
-
-    statusButtons.forEach(btn => {
-
-      btn.addEventListener(
-        'click',
-        function(){
-
-          statusButtons.forEach(
-            b =>
-              b.classList.remove(
-                'active'
-              )
-          );
-
-
-          this.classList.add(
-            'active'
-          );
-
-
-          applyFilter();
-
-        }
-      );
-
-    });
-
-
-    filterTanggal.addEventListener(
-      'change',
-      applyFilter
-    );
-
-
-    filterSto.addEventListener(
-      'change',
-      applyFilter
-    );
-
-
-    // ============================================================
-    // BUKA MODAL
-    // ============================================================
-
-    function openModal(mode, row){
-
-      editingRow =
-        row || null;
-
-
-      modalTitle.textContent =
-        mode === 'edit'
-          ? 'Edit Data'
-          : 'Tambah Data Baru';
-
-
-      if (row){
-
-        // EDIT
-        fOrderId.value =
-          row.dataset.order_id || '';
-
-
-        fDeskripsi.value =
-          row.dataset.deskripsi || '';
-
-
-        fSto.value =
-          row.dataset.sto || '';
-
-
-        fTanggal.value =
-          row.dataset.tgl || '';
-
-
-        fPic.value =
-          row.dataset.pic || '';
-
-
-        fStatusRe.value =
-          row.dataset.status_re || '';
-
-
-        fStatusDetail.value =
-          row.dataset.status_detail || '';
-
-
-        fKet.value =
-          row.dataset.ket || '';
-
-      } else {
-
-        // TAMBAH
-        form.reset();
-
-
-        // Otomatis hari ini.
-        fTanggal.value =
-          todayIso();
-
-      }
-
-
-      overlay.classList.add(
-        'open'
-      );
-
-
-      setTimeout(
-        () =>
-          fOrderId.focus(),
-        50
-      );
+        return (
+            day
+            + ' '
+            + bulanNama[month - 1]
+            + ' '
+            + year
+        );
 
     }
 
 
-    // ============================================================
-    // TUTUP MODAL
-    // ============================================================
+    /*
+    |--------------------------------------------------------------------------
+    | APPLY FILTER
+    |--------------------------------------------------------------------------
+    */
 
-    function closeModal(){
+    function applyFilters() {
 
-      overlay.classList.remove(
-        'open'
-      );
-
-
-      editingRow =
-        null;
-
-    }
+        const activeStatusButton =
+            document.querySelector(
+                '#dfStatusRow .df-status-btn.active'
+            );
 
 
-    addBtn.addEventListener(
-      'click',
-      () =>
-        openModal('add')
-    );
+        const statusFilter =
+            activeStatusButton
+                ? activeStatusButton.dataset.filter
+                : 'semua';
 
 
-    closeBtn.addEventListener(
-      'click',
-      closeModal
-    );
+        const stoFilter =
+            dfSto
+                ? String(dfSto.value || '').trim().toUpperCase()
+                : '';
 
 
-    cancelBtn.addEventListener(
-      'click',
-      closeModal
-    );
+        let shown = 0;
+
+        let periodLabel = '';
 
 
-    overlay.addEventListener(
-      'click',
-      function(e){
+        /*
+        |--------------------------------------------------------------------------
+        | LABEL PERIODE
+        |--------------------------------------------------------------------------
+        */
 
         if (
-          e.target === overlay
-        ){
-          closeModal();
+            activeRange ===
+            'tanggal'
+        ) {
+
+            periodLabel =
+                dfTanggal.value
+                    ? formatTanggalId(
+                        dfTanggal.value
+                    )
+                    : '';
+
         }
 
-      }
-    );
+        else if (
+            activeRange ===
+            'bulan'
+        ) {
+
+            const selected =
+                dfBulan.options[
+                    dfBulan.selectedIndex
+                ];
 
 
-    document.addEventListener(
-      'keydown',
-      function(e){
+            periodLabel =
+                (
+                    selected
+                        ? selected.text
+                        : ''
+                )
+                + ' '
+                + dfTahunBulan.value;
 
-        if (
-          e.key === 'Escape' &&
-          overlay.classList.contains('open')
-        ){
-          closeModal();
         }
 
-      }
-    );
+        else if (
+            activeRange ===
+            'tahun'
+        ) {
 
+            periodLabel =
+                'Tahun '
+                + dfTahunOnly.value;
 
-    // ============================================================
-    // EDIT / DELETE
-    // ============================================================
-
-    tableBody.addEventListener(
-      'click',
-      async function(e){
-
-        const editButton =
-          e.target.closest(
-            '.ed-edit-btn'
-          );
-
-
-        const deleteButton =
-          e.target.closest(
-            '.ed-delete-btn'
-          );
-
-
-        const row =
-          e.target.closest(
-            'tr[data-id]'
-          );
-
-
-        if (!row){
-          return;
         }
 
 
-        // EDIT
-        if (editButton){
+        /*
+        |--------------------------------------------------------------------------
+        | LOOP DATA
+        |--------------------------------------------------------------------------
+        */
 
-          openModal(
-            'edit',
-            row
-          );
+        rows.forEach(
+            function (row) {
 
-          return;
-        }
-
-
-        // DELETE
-        if (deleteButton){
-
-          const rowId =
-            row.dataset.id;
+                const rowDate =
+                    row.dataset.date
+                    || '';
 
 
-          if (!rowId){
-
-            await showUiAlert({
-              type:'error',
-              title:'Data Tidak Ditemukan',
-              message:'ID data tidak ditemukan. Silakan refresh halaman.',
-              confirmText:'OK'
-            });
-
-            return;
-
-          }
+                const rowSto =
+                    String(
+                        row.dataset.sto
+                        || ''
+                    )
+                    .trim()
+                    .toUpperCase();
 
 
-          const orderIdForDelete =
-            row.dataset.order_id || 'ini';
-
-          const confirmed =
-            await showUiConfirm({
-              title:'Hapus Data?',
-              message:`Apakah kamu yakin ingin menghapus data <strong>${escapeUiHtml(orderIdForDelete)}</strong>? Data yang sudah dihapus tidak dapat dikembalikan.`,
-              confirmText:'Hapus',
-              cancelText:'Batal'
-            });
-
-          if (!confirmed){
-            return;
-          }
+                const rowStatus =
+                    row.dataset.status
+                    || '';
 
 
-          try {
+                let rangeMatch =
+                    true;
 
-            const response =
-              await fetch(
-                `{{ url('/dashboard/' . $witelSlug . '/edit-data') }}/${rowId}`,
-                {
-                  method:'DELETE',
 
-                  headers:{
-                    'X-CSRF-TOKEN':
-                      '{{ csrf_token() }}',
+                if (
+                    activeRange ===
+                    'tanggal'
+                ) {
 
-                    'Accept':
-                      'application/json',
+                    rangeMatch =
+                        !dfTanggal.value
+                        ||
+                        rowDate ===
+                            dfTanggal.value;
 
-                    'X-Requested-With':
-                      'XMLHttpRequest'
-                  },
-
-                  credentials:
-                    'same-origin'
                 }
-              );
 
 
-            const result =
-              await response
-                .json()
-                .catch(
-                  () => ({})
+                else if (
+                    activeRange ===
+                    'bulan'
+                ) {
+
+                    rangeMatch =
+                        rowDate.slice(0, 4)
+                            ===
+                        dfTahunBulan.value
+                        &&
+                        rowDate.slice(5, 7)
+                            ===
+                        dfBulan.value;
+
+                }
+
+
+                else if (
+                    activeRange ===
+                    'tahun'
+                ) {
+
+                    rangeMatch =
+                        rowDate.slice(0, 4)
+                            ===
+                        dfTahunOnly.value;
+
+                }
+
+
+                const statusMatch =
+                    statusFilter ===
+                    'semua'
+                    ||
+                    rowStatus ===
+                    statusFilter;
+
+
+                const stoMatch =
+                    !stoFilter
+                    ||
+                    rowSto ===
+                    stoFilter;
+
+
+                const visible =
+                    rangeMatch
+                    &&
+                    statusMatch
+                    &&
+                    stoMatch;
+
+
+                /*
+                 * CSS tabel memakai display:table-row !important.
+                 * Karena itu display biasa dari JS kalah oleh CSS.
+                 * Pakai setProperty(..., 'important') agar baris yang
+                 * tidak cocok benar-benar tersembunyi saat filter STO.
+                 */
+                row.style.setProperty(
+                    'display',
+                    visible
+                        ? 'table-row'
+                        : 'none',
+                    'important'
                 );
 
 
-            if (
-              !response.ok ||
-              !result.success
-            ){
-
-              throw new Error(
-                result.message ||
-                'Gagal menghapus data.'
-              );
+                if (visible) {
+                    shown++;
+                }
 
             }
-
-
-            row.remove();
-
-
-            renumberRows();
-
-
-            applyFilter();
-
-
-            await showUiAlert({
-              type:'success',
-              title:'Data Berhasil Dihapus',
-              message:`Data <strong>${escapeUiHtml(orderIdForDelete)}</strong> berhasil dihapus dan riwayat penghapusannya telah dicatat.`,
-              confirmText:'OK'
-            });
-
-
-          } catch(error){
-
-            console.error(
-              error
-            );
-
-
-            await showUiAlert({
-              type:'error',
-              title:'Gagal Menghapus Data',
-              message:escapeUiHtml(error.message || 'Terjadi kesalahan saat menghapus data.'),
-              confirmText:'OK'
-            });
-
-          }
-
-        }
-
-      }
-    );
-
-
-    // ============================================================
-    // NOMOR URUT
-    // ============================================================
-
-    function renumberRows(){
-
-      const rows =
-        document.querySelectorAll(
-          '#edTableBody tr[data-status]'
         );
 
 
-      rows.forEach(
-        (row,index) => {
+        if (noMatchEl) {
 
-          const noCell =
-            row.querySelector(
-              '.ed-no'
-            );
-
-
-          if (noCell){
-
-            noCell.textContent =
-              index + 1;
-
-          }
+            noMatchEl.style.display =
+                shown === 0
+                    ? 'block'
+                    : 'none';
 
         }
-      );
+
+
+        if (meta) {
+
+            meta.textContent =
+                'Menampilkan data · '
+                + periodLabel
+                + ' · '
+                + shown
+                + ' data ditemukan';
+
+        }
 
     }
 
 
-    // ============================================================
-    // BUILD PAYLOAD
-    // ============================================================
-
-    function buildPayload(){
-
-      return {
-
-        order_id:
-          fOrderId.value.trim(),
-
-        deskripsi:
-          fDeskripsi.value.trim(),
-
-        sto:
-          fSto.value.trim(),
-
-        tanggal:
-          fTanggal.value,
-
-        pic:
-          fPic.value.trim(),
-
-        resolved_eskalasi:
-          fStatusRe.value,
-
-        status:
-          fStatusDetail.value,
-
-        ket:
-          fKet.value.trim()
-
-      };
-
-    }
-
-
-    // ============================================================
-    // PARSE RESPONSE SERVER
-    // ============================================================
-
-    async function parseResponse(
-      response
-    ){
-
-      const result =
-        await response
-          .json()
-          .catch(
-            () => ({})
-          );
-
-
-      if (
-        response.ok &&
-        result.success
-      ){
-
-        return result;
-
-      }
-
-
-      const validationErrors =
-        result.errors
-          ? Object.values(
-              result.errors
-            )
-              .flat()
-              .join('\n')
-          : '';
-
-
-      let message =
-        validationErrors
-        ||
-        result.message
-        ||
-        `Permintaan gagal (${response.status}).`;
-
-      // Jangan tampilkan SQL mentah ke user.
-      // Khusus duplicate key, tampilkan pesan yang mudah dipahami.
-      if (
-        /Integrity constraint violation|Duplicate entry|1062/i.test(message)
-      ){
-        const duplicateMatch =
-          message.match(/Duplicate entry ['\"](?:[^-'\"]+-)?([^'\"]+)['\"]/i);
-
-        const duplicateId =
-          duplicateMatch && duplicateMatch[1]
-            ? duplicateMatch[1]
-            : fOrderId.value.trim();
-
-        message =
-          `Order ID ${duplicateId || 'tersebut'} sudah ada pada batch data yang dipilih. Gunakan Order ID lain atau edit data yang sudah ada.`;
-      }
-
-      throw new Error(message);
-
-    }
-
-
-    // ============================================================
-    // SIMPAN DATA
-    //
-    // TAMBAH  -> POST
-    // EDIT    -> PUT
-    // ============================================================
-
-    saveBtn.addEventListener(
-      'click',
-      async function(){
-
-        const payload =
-          buildPayload();
-
-
-        // VALIDASI FRONTEND
-        if (!payload.order_id){
-
-          showUiAlert({
-            type:'error',
-            title:'Data Belum Lengkap',
-            message:'No/Order ID wajib diisi.',
-            confirmText:'OK'
-          });
-
-          fOrderId.focus();
-
-          return;
-
-        }
-
-
-        if (!payload.tanggal){
-
-          showUiAlert({
-            type:'error',
-            title:'Data Belum Lengkap',
-            message:'Tanggal wajib diisi.',
-            confirmText:'OK'
-          });
-
-          fTanggal.focus();
-
-          return;
-
-        }
-
-
-        if (
-          !payload.resolved_eskalasi
-        ){
-
-          showUiAlert({
-            type:'error',
-            title:'Data Belum Lengkap',
-            message:'RESOLVED/ESKALASI wajib diisi.',
-            confirmText:'OK'
-          });
-
-          fStatusRe.focus();
-
-          return;
-
-        }
-
-        // Saat tambah, cegah duplikasi yang sudah terlihat di tabel.
-        // Backend tetap melakukan pengecekan final.
-        if (!editingRow){
-          const wantedOrderId = payload.order_id.toLowerCase();
-          const duplicateRow = Array.from(
-            document.querySelectorAll('#edTableBody tr[data-status]')
-          ).find(row =>
-            String(row.dataset.order_id || '').trim().toLowerCase() === wantedOrderId
-          );
-
-          if (duplicateRow){
-            showUiAlert({
-              type:'error',
-              title:'Data Sudah Ada',
-              message:`Order ID <strong>${escapeUiHtml(payload.order_id)}</strong> sudah ada di tabel Witel ini. Gunakan data lain atau klik Edit pada data tersebut.`,
-              confirmText:'OK'
-            });
-            fOrderId.focus();
-            return;
-          }
-        }
-
-
-        const isEdit =
-          Boolean(
-            editingRow
-          );
-
-
-        const rowId =
-          isEdit
-            ? editingRow.dataset.id
-            : null;
-
-
-        const url =
-          isEdit
-
-            ? `{{ url('/dashboard/' . $witelSlug . '/edit-data') }}/${rowId}`
-
-            : `{{ url('/dashboard/' . $witelSlug . '/edit-data') }}`;
-
-
-        const method =
-          isEdit
-            ? 'PUT'
-            : 'POST';
-
-
-        saveBtn.disabled =
-          true;
-
-
-        saveBtn.textContent =
-          isEdit
-            ? '⏳ Menyimpan...'
-            : '⏳ Menambahkan...';
-
-
-        try {
-
-          const response =
-            await fetch(
-              url,
-              {
-                method,
-
-                headers:{
-
-                  'Content-Type':
-                    'application/json',
-
-                  'X-CSRF-TOKEN':
-                    '{{ csrf_token() }}',
-
-                  'Accept':
-                    'application/json',
-
-                  'X-Requested-With':
-                    'XMLHttpRequest'
-
-                },
-
-                credentials:
-                  'same-origin',
-
-                body:
-                  JSON.stringify(
-                    payload
-                  )
-
-              }
+    /*
+    |--------------------------------------------------------------------------
+    | TAB CLICK
+    |--------------------------------------------------------------------------
+    */
+
+    tabs.forEach(
+        function (tab) {
+
+            tab.addEventListener(
+                'click',
+                function () {
+
+                    switchRange(
+                        this
+                    );
+
+                }
             );
 
-
-          const result =
-            await parseResponse(
-              response
-            );
-
-
-          closeModal();
-
-
-          await showUiAlert({
-            type:'success',
-            title:isEdit
-              ? 'Data Berhasil Diperbarui'
-              : 'Data Berhasil Ditambahkan',
-            message:escapeUiHtml(
-              result.message
-              ||
-              (
-                isEdit
-                  ? 'Data berhasil diperbarui.'
-                  : 'Data berhasil ditambahkan.'
-              )
-            ),
-            confirmText:'OK'
-          });
-
-
-          // PENTING:
-          // ambil ulang data dari DATABASE.
-          // Jadi data tidak hilang ketika browser refresh.
-          window.location.reload();
-
-
-        } catch(error){
-
-          console.error(
-            error
-          );
-
-
-          await showUiAlert({
-            type:'error',
-            title:'Gagal Menyimpan Data',
-            message:escapeUiHtml(
-              error.message
-              ||
-              'Terjadi kesalahan saat menyimpan data.'
-            ),
-            confirmText:'OK'
-          });
-
-
-        } finally {
-
-          saveBtn.disabled =
-            false;
-
-
-          saveBtn.textContent =
-            '💾 Simpan';
-
         }
-
-      }
     );
 
 
-    // ============================================================
-    // DEFAULT HALAMAN
-    //
-    // Tanggal sengaja kosong:
-    // SEMUA DATA akan langsung tampil.
-    // ============================================================
+    /*
+    |--------------------------------------------------------------------------
+    | STATUS CLICK
+    |--------------------------------------------------------------------------
+    */
 
-    filterTanggal.value =
-      '';
+    statusButtons.forEach(
+        function (button) {
 
-    filterSto.value =
-      'semua';
+            button.addEventListener(
+                'click',
+                function () {
 
-    applyFilter();
+                    statusButtons.forEach(
+                        function (b) {
 
-  })();
+                            b.classList.remove(
+                                'active'
+                            );
+
+                        }
+                    );
+
+
+                    this.classList.add(
+                        'active'
+                    );
+
+
+                    applyFilters();
+
+                }
+            );
+
+        }
+    );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | FILTER CHANGE
+    |--------------------------------------------------------------------------
+    */
+
+    [
+        dfTanggal,
+        dfBulan,
+        dfTahunBulan,
+        dfTahunOnly,
+        dfSto
+
+    ].forEach(
+        function (element) {
+
+            if (!element) {
+                return;
+            }
+
+
+            element.addEventListener(
+                'change',
+                applyFilters
+            );
+
+        }
+    );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | BUTTON EYE
+    |--------------------------------------------------------------------------
+    */
+
+    document
+        .querySelectorAll(
+            '.df-view-btn'
+        )
+        .forEach(
+            function (button) {
+
+                button.addEventListener(
+                    'click',
+                    function () {
+
+                        const row =
+                            this.closest('tr');
+
+
+                        if (!row) {
+                            return;
+                        }
+
+
+                        const previewType =
+                            this.dataset.preview;
+
+
+                        if (
+                            previewType ===
+                            'order'
+                        ) {
+
+                            openPreview(
+                                'No/Order ID Lengkap',
+                                row.dataset.orderId
+                            );
+
+                        }
+
+                        else {
+
+                            openPreview(
+                                'Deskripsi Lengkap',
+                                row.dataset.description
+                            );
+
+                        }
+
+                    }
+                );
+
+            }
+        );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | OPEN PREVIEW
+    |--------------------------------------------------------------------------
+    */
+
+    function openPreview(
+        title,
+        content
+    ) {
+
+        if (!previewModal) {
+            return;
+        }
+
+
+        modalTitle.textContent =
+            title;
+
+
+        modalContent.textContent =
+            content || '-';
+
+
+        copyBtn.dataset.copyText =
+            content || '';
+
+
+        previewModal.classList.add(
+            'open'
+        );
+
+
+        document.body.style.overflow =
+            'hidden';
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | CLOSE PREVIEW
+    |--------------------------------------------------------------------------
+    */
+
+    function closePreview() {
+
+        if (!previewModal) {
+            return;
+        }
+
+
+        previewModal.classList.remove(
+            'open'
+        );
+
+
+        document.body.style.overflow =
+            '';
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | CLOSE BUTTON
+    |--------------------------------------------------------------------------
+    */
+
+    if (modalClose) {
+
+        modalClose.addEventListener(
+            'click',
+            closePreview
+        );
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | CLICK BACKDROP
+    |--------------------------------------------------------------------------
+    */
+
+    if (previewModal) {
+
+        previewModal.addEventListener(
+            'click',
+            function (event) {
+
+                if (
+                    event.target ===
+                    previewModal
+                ) {
+
+                    closePreview();
+
+                }
+
+            }
+        );
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | ESCAPE
+    |--------------------------------------------------------------------------
+    */
+
+    document.addEventListener(
+        'keydown',
+        function (event) {
+
+            if (
+                event.key ===
+                'Escape'
+            ) {
+
+                closePreview();
+
+            }
+
+        }
+    );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | COPY BUTTON
+    |--------------------------------------------------------------------------
+    */
+
+    if (copyBtn) {
+
+        copyBtn.addEventListener(
+            'click',
+            function () {
+
+                const text =
+                    this.dataset.copyText
+                    || '';
+
+
+                if (
+                    navigator.clipboard &&
+                    navigator.clipboard.writeText
+                ) {
+
+                    navigator.clipboard
+                        .writeText(text)
+                        .then(
+                            function () {
+
+                                const oldText =
+                                    copyBtn.textContent;
+
+
+                                copyBtn.textContent =
+                                    'Tersalin ✓';
+
+
+                                setTimeout(
+                                    function () {
+
+                                        copyBtn.textContent =
+                                            oldText;
+
+                                    },
+                                    1200
+                                );
+
+                            }
+                        );
+
+                }
+
+            }
+        );
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | FILTER PERTAMA
+    |--------------------------------------------------------------------------
+    */
+
+    applyFilters();
+
+})();
 
 </script>
