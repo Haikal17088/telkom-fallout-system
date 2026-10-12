@@ -1,0 +1,23 @@
+﻿# Dependencies dipasang saat build
+/vendor/
+/node_modules/
+
+# Rahasia lokal
+.env
+.env.*
+!.env.example
+
+# Artefak runtime lokal
+/storage/logs/
+/storage/framework/cache/
+/storage/framework/sessions/
+/storage/framework/views/
+/storage/framework/lsp-*.php
+
+# File pemeriksaan lokal, bukan bagian dari aplikasi
+/README.txt
+/supabase-migration-review.zip
+/app/Models/FalloutData-booted-snippet.php.txt
+/routes/arsip-hapus-tahun.snippet.php.txt
+/routes/arsip-hapus-tanggal.snippet.php.txt
+/patches/

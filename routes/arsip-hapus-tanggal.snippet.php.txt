@@ -1,0 +1,51 @@
+// GANTI hanya bagian lama $batchIds sampai $deleted = ...->delete(); di route arsip.hapus.tanggal.
+// Biarkan loop sinkronisasi batch setelahnya tetap persis seperti sekarang.
+[$deleted, $batchIds] = \Illuminate\Support\Facades\DB::transaction(
+    function () use ($witel, $request) {
+        // Samakan cara memilih tanggal dengan preview Blade (Carbon).
+        $targetDate = \Carbon\Carbon::parse($request->input('tanggal'))->toDateString();
+
+        $rowsToDelete = \App\Models\FalloutData::forWitel($witel)
+            ->get()
+            ->filter(function ($row) use ($targetDate) {
+                if (empty($row->tanggal)) {
+                    return false;
+                }
+
+                try {
+                    return \Carbon\Carbon::parse($row->tanggal)->toDateString() === $targetDate;
+                } catch (\Throwable $e) {
+                    return false;
+                }
+            })
+            ->values();
+
+        if ($rowsToDelete->isEmpty()) {
+            return [0, collect()];
+        }
+
+        $rowIds = $rowsToDelete->pluck('row_id')->filter()->values();
+        if ($rowIds->count() !== $rowsToDelete->count()) {
+            throw new \RuntimeException('Sebagian data tidak memiliki row_id; penghapusan dibatalkan.');
+        }
+
+        $batchIds = $rowsToDelete->pluck('batch_id')->filter()->unique()->values();
+
+        \App\Support\FalloutDeletionHistoryRecorder::record(
+            $rowsToDelete,
+            $witel,
+            'arsip_tanggal'
+        );
+
+        // Hapus row_id yang sama persis dengan snapshot.
+        $deleted = \Illuminate\Support\Facades\DB::table('fallout_data')
+            ->whereIn('row_id', $rowIds->all())
+            ->delete();
+
+        if ($deleted !== $rowIds->count()) {
+            throw new \RuntimeException('Jumlah baris yang terhapus tidak sesuai snapshot. Transaksi dibatalkan.');
+        }
+
+        return [$deleted, $batchIds];
+    }
+);

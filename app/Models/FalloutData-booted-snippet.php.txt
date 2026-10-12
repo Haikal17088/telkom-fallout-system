@@ -1,0 +1,23 @@
+// Paste only the callback into the existing booted() if it already exists.
+// If it does not exist, add this method to app/Models/FalloutData.php.
+protected static function booted(): void
+{
+    parent::booted();
+
+    static::deleted(function (self $row): void {
+        // Read branch information before any controller cleanup deletes the batch.
+        $row->loadMissing('batch.branch');
+        $branch = $row->batch ? $row->batch->branch : null;
+        $witelSlug = $branch ? ($branch->kode_cabang ?? null) : null;
+
+        if (!$witelSlug) {
+            return;
+        }
+
+        \App\Support\FalloutDeletionHistoryRecorder::record(
+            [$row],
+            (string) $witelSlug,
+            'edit_data'
+        );
+    });
+}

@@ -1,0 +1,31 @@
+PERBAIKAN HAPUS SATU BARIS (Edit Data)
+File: app/Http/Controllers/FalloutController.php
+Method: destroy(string $witel, int $id)
+
+1. Ubah baris pembuka transaction:
+LAMA:
+DB::transaction(function () use ($row, $batchId) {
+
+MENJADI:
+DB::transaction(function () use ($row, $batchId, $witel) {
+
+2. Di dalam callback transaction, tepat sebelum:
+$row->delete();
+
+tambahkan:
+\App\Support\FalloutDeletionHistoryRecorder::record(
+    [$row],
+    $witel,
+    'edit_data'
+);
+
+Urutannya harus menjadi:
+\App\Support\FalloutDeletionHistoryRecorder::record(
+    [$row],
+    $witel,
+    'edit_data'
+);
+
+$row->delete();
+
+Jangan membuat method booted() baru di FalloutData. Untuk hapus satu baris, pencatatan dilakukan langsung dari controller agar tidak perlu mengubah model.
