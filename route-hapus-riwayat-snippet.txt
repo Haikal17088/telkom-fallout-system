@@ -1,0 +1,46 @@
+/*
+|--------------------------------------------------------------------------
+| HAPUS RIWAYAT PENGHAPUSAN FALLOUT — hanya untuk Witel aktif
+|--------------------------------------------------------------------------
+| Menghapus snapshot audit pada tabel deleted_fallout_histories untuk
+| satu Witel saja. Data asli di fallout_data tidak diubah.
+|
+| Tempel blok ini DI DALAM Route::middleware('auth')->group(function () {
+| ... }); di routes/web.php, sejajar dengan route arsip.hapus.tahun
+| dan arsip.hapus.tanggal (bukan di dalam closure route lain).
+|--------------------------------------------------------------------------
+*/
+Route::delete(
+    '/dashboard/{witel}/arsip-hapus/riwayat',
+    function (string $witel) {
+        $witel = \Illuminate\Support\Str::lower(trim($witel));
+
+        abort_unless(
+            in_array($witel, ['jaktim', 'jakpus', 'jaksel'], true),
+            404
+        );
+
+        abort_unless(
+            \Illuminate\Support\Facades\Schema::hasTable('deleted_fallout_histories'),
+            500,
+            'Tabel deleted_fallout_histories belum tersedia. Jalankan migration terlebih dahulu.'
+        );
+
+        $deletedCount = \Illuminate\Support\Facades\DB::table('deleted_fallout_histories')
+            ->where('witel_slug', $witel)
+            ->delete();
+
+        return redirect()
+            ->route('dashboard.menu', [
+                'witel' => $witel,
+                'menu' => 'arsip-hapus',
+            ])
+            ->with(
+                'status',
+                number_format($deletedCount, 0, ',', '.')
+                    . ' riwayat penghapusan untuk Witel '
+                    . strtoupper($witel)
+                    . ' berhasil dihapus. Data Fallout asli tidak dihapus.'
+            );
+    }
+)->name('arsip-hapus.riwayat.destroy');

@@ -292,10 +292,16 @@
   $adhSearch = trim((string) request()->query('riwayat_cari', ''));
   $adhHistoryReady = \Illuminate\Support\Facades\Schema::hasTable('deleted_fallout_histories');
   $adhHistory = null;
+  $adhHistoryTotal = 0;
 
   if ($adhHistoryReady) {
+      $adhWitelSlug = \Illuminate\Support\Str::lower(trim((string) $witelSlug));
+      $adhHistoryTotal = \Illuminate\Support\Facades\DB::table('deleted_fallout_histories')
+          ->where('witel_slug', $adhWitelSlug)
+          ->count();
+
       $adhQuery = \Illuminate\Support\Facades\DB::table('deleted_fallout_histories')
-          ->where('witel_slug', \Illuminate\Support\Str::lower((string) $witelSlug));
+          ->where('witel_slug', $adhWitelSlug);
 
       if ($adhSearch !== '') {
           $adhLike = '%' . mb_strtolower($adhSearch) . '%';
@@ -1123,18 +1129,36 @@
         </div>
       </div>
 
-      <form class="adh-history-search" method="GET" action="{{ route('dashboard.menu', ['witel' => $witelSlug, 'menu' => 'arsip-hapus']) }}">
-        @foreach(request()->except(['riwayat_cari', 'riwayat_page']) as $key => $value)
-          @if(is_scalar($value))
-            <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+      <div class="adh-history-tools">
+        <form class="adh-history-search" method="GET" action="{{ route('dashboard.menu', ['witel' => $witelSlug, 'menu' => 'arsip-hapus']) }}">
+          @foreach(request()->except(['riwayat_cari', 'riwayat_page']) as $key => $value)
+            @if(is_scalar($value))
+              <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+            @endif
+          @endforeach
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.5" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <input type="search" name="riwayat_cari" value="{{ $adhSearch }}" placeholder="Cari ID, STO, PIC..." aria-label="Cari riwayat data dihapus">
+          @if($adhSearch !== '')
+            <a class="adh-history-clear" href="{{ route('dashboard.menu', ['witel' => $witelSlug, 'menu' => 'arsip-hapus']) }}" aria-label="Hapus pencarian">×</a>
           @endif
-        @endforeach
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.5" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <input type="search" name="riwayat_cari" value="{{ $adhSearch }}" placeholder="Cari ID, STO, PIC..." aria-label="Cari riwayat data dihapus">
-        @if($adhSearch !== '')
-          <a class="adh-history-clear" href="{{ route('dashboard.menu', ['witel' => $witelSlug, 'menu' => 'arsip-hapus']) }}" aria-label="Hapus pencarian">×</a>
+        </form>
+
+        @if($adhHistoryReady)
+          <form class="adh-history-delete-form" method="POST"
+                action="{{ route('arsip-hapus.riwayat.destroy', ['witel' => $witelSlug]) }}"
+                onsubmit="confirmDeleteHistory(this); return false;">
+            @csrf
+            @method('DELETE')
+            <button type="submit" class="adh-history-delete-btn" {{ $adhHistoryTotal <= 0 ? 'disabled' : '' }}>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true">
+                <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>Hapus Riwayat</span>
+              <span class="adh-history-delete-count">{{ number_format($adhHistoryTotal, 0, ',', '.') }}</span>
+            </button>
+          </form>
         @endif
-      </form>
+      </div>
     </div>
 
     @if(!$adhHistoryReady)
@@ -1147,14 +1171,20 @@
             @forelse($adhHistory as $history)
               <tr>
                 <td>{{ ($adhHistory->firstItem() ?? 1) + $loop->index }}</td>
-                <td class="adh-history-id">{{ $history->order_id ?: ('#' . ($history->original_row_id ?? $history->history_id)) }}</td>
+                @php
+                  $adhRowId = (string) ($history->order_id ?: ('#' . ($history->original_row_id ?? $history->history_id)));
+                  $adhShortId = mb_strlen($adhRowId) > 34
+                      ? mb_substr($adhRowId, 0, 18) . '…' . mb_substr($adhRowId, -10)
+                      : $adhRowId;
+                @endphp
+                <td class="adh-history-id" title="{{ $adhRowId }}" aria-label="ID Fallout lengkap: {{ $adhRowId }}">{{ $adhShortId }}</td>
                 <td><span class="adh-sto-badge">{{ $history->sto ?: '-' }}</span></td>
                 <td>{{ $history->pic ?: '-' }}</td>
                 <td><span class="adh-deleter"><span class="adh-user-mark" aria-hidden="true">♙</span>{{ $history->deleted_by_name ?: 'System' }}</span></td>
                 <td class="adh-history-time">{{ \Carbon\Carbon::parse($history->deleted_at)->translatedFormat('d/m/Y, H.i') }}</td>
                 <td>
                   <button type="button" class="adh-detail-btn" data-adh-detail
-                    data-fallout-id="{{ $history->order_id ?: ('#' . ($history->original_row_id ?? $history->history_id)) }}"
+                    data-fallout-id="{{ $adhRowId }}"
                     data-sto="{{ $history->sto ?: '-' }}"
                     data-tanggal="{{ $history->tanggal ? \Carbon\Carbon::parse($history->tanggal)->format('d/m/Y') : '-' }}"
                     data-pic="{{ $history->pic ?: '-' }}"
@@ -2413,6 +2443,12 @@
 .adh-history-icon{display:inline-flex;align-items:center;justify-content:center;flex:none;width:34px;height:34px;border-radius:10px;color:#920B20;background:#F9ECEF}
 .adh-history-title-wrap h3{margin:0;font-size:15px;font-weight:800;color:#3A1821}
 .adh-history-title-wrap p{margin:4px 0 0;font-size:11.5px;line-height:1.5;color:#88777C}
+.adh-history-tools{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap;min-width:0}
+.adh-history-delete-form{margin:0;flex:none}
+.adh-history-delete-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:0 12px;border:1px solid #F0C8CF;border-radius:10px;background:#FFF3F5;color:#8B1027;cursor:pointer;font:700 11px Inter,sans-serif;white-space:nowrap;transition:background .15s ease,border-color .15s ease}
+.adh-history-delete-btn:hover:not(:disabled){background:#FBE4E9;border-color:#DCAAB4}
+.adh-history-delete-btn:disabled{opacity:.45;cursor:not-allowed}
+.adh-history-delete-count{display:inline-flex;align-items:center;justify-content:center;min-width:21px;height:21px;padding:0 5px;border-radius:999px;background:#F2D0D7;color:#781126;font-size:10px}
 .adh-history-search{display:flex;align-items:center;gap:8px;width:min(280px,100%);min-height:40px;padding:0 11px;border:1px solid #E8DDDE;background:#fff;border-radius:10px;color:#998B8F}
 .adh-history-search input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:#35252A;font:500 12px Inter,sans-serif}
 .adh-history-search input::placeholder{color:#A99A9E}
@@ -2422,7 +2458,7 @@
 .adh-history-table thead th{padding:12px 10px;background:#FBF8F8;color:#8C7B80;font-size:9.5px;font-weight:800;letter-spacing:.04em;text-align:left;border-bottom:1px solid #EDE3E4;white-space:nowrap}
 .adh-history-table tbody td{padding:12px 10px;border-bottom:1px solid #F1E9EA;color:#5D5054;vertical-align:middle}
 .adh-history-table tbody tr:last-child td{border-bottom:0}.adh-history-table tbody tr:hover{background:#FFFBFC}
-.adh-history-table .adh-history-id{font-weight:700;color:#9C0B24;max-width:180px;overflow-wrap:anywhere}
+.adh-history-table .adh-history-id{font-weight:700;color:#9C0B24;max-width:210px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:help;font-variant-numeric:tabular-nums}
 .adh-sto-badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#F9E9ED;color:#970A22;font-size:10px;font-weight:800}
 .adh-deleter{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.adh-user-mark{display:inline-flex;align-items:center;justify-content:center;width:23px;height:23px;border-radius:50%;color:#8F0B20;background:#F8EAED;font-size:16px}
 .adh-history-time{white-space:nowrap}
@@ -2433,25 +2469,13 @@
 .adh-history-pagination{display:flex;align-items:center;gap:9px}
 .adh-history-pagination a,.adh-history-pagination .is-disabled{padding:6px 9px;border:1px solid #EAE0E1;border-radius:7px;color:#751125;text-decoration:none;background:#fff}
 .adh-history-pagination a:hover{background:#FFF3F5}.adh-history-pagination .is-disabled{color:#B7A9AC;background:#FAF8F8}.adh-page-number{font-weight:800;color:#79676C;white-space:nowrap}
-/* Modal detail dipasang ke body agar posisi fixed selalu mengikuti viewport, bukan container halaman. */
-.adh-detail-overlay{display:none;position:fixed!important;inset:0!important;width:100vw;height:100vh;height:100dvh;z-index:2147483000!important;align-items:center;justify-content:center;padding:16px;background:rgba(35,20,24,.48);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-sizing:border-box;overflow:hidden}
-.adh-detail-overlay.is-open{display:flex}
-.adh-detail-modal{position:relative;display:flex;flex-direction:column;width:min(672px,calc(100vw - 32px));height:min(536px,calc(100vh - 32px));height:min(536px,calc(100dvh - 32px));max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);min-height:0;margin:auto;padding:0;overflow:hidden;border:1px solid rgba(255,255,255,.85);border-radius:17px;background:#fff;box-shadow:0 28px 90px rgba(40,0,10,.30);box-sizing:border-box}
-.adh-detail-modal-head{flex:0 0 auto;display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin:0;padding:18px 20px 16px;border-bottom:1px solid #F0E7E8;background:#fff}
-.adh-detail-modal-head h3{display:flex;align-items:center;gap:9px;margin:0;color:#35232A;font-size:16px;font-weight:800;line-height:1.4}
-.adh-detail-modal-head p{margin:6px 0 0;color:#707987;font-size:11px}
-.adh-detail-close{width:32px;height:32px;flex:none;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:9px;color:#9AA3B2;background:transparent;font-size:25px;line-height:1;cursor:pointer;transition:background .15s ease,color .15s ease}
-.adh-detail-close:hover{color:#5F6877;background:#F5F6F8}
-.adh-detail-grid{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:10px;overflow-y:auto;overscroll-behavior:contain;padding:18px 20px 20px;scrollbar-width:thin;scrollbar-color:#A80721 #F8ECEE;box-sizing:border-box}
-.adh-detail-grid::-webkit-scrollbar{width:9px}
-.adh-detail-grid::-webkit-scrollbar-track{background:#F8ECEE;border-radius:999px}
-.adh-detail-grid::-webkit-scrollbar-thumb{background:#A80721;border:2px solid #F8ECEE;border-radius:999px}
-.adh-detail-field{min-width:0;padding:13px 14px;border:1px solid #E2E5EA;border-radius:12px;background:#F8F9FB;box-sizing:border-box}
-.adh-detail-field span{display:block;margin-bottom:7px;color:#9AA4B5;font-size:10px;font-weight:800;letter-spacing:.04em}
-.adh-detail-field strong{display:block;color:#455064;font-size:12px;font-weight:500;line-height:1.55;overflow-wrap:anywhere;white-space:pre-wrap}
-.adh-detail-field-wide{grid-column:1/-1}
+.adh-detail-overlay{display:none;position:fixed;inset:0;z-index:2147483000;align-items:center;justify-content:center;padding:18px;background:rgba(35,20,24,.42);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-sizing:border-box}
+.adh-detail-overlay.is-open{display:flex}.adh-detail-modal{width:min(720px,100%);max-height:min(82vh,760px);overflow:auto;padding:22px;border:1px solid rgba(255,255,255,.8);border-radius:20px;background:#fff;box-shadow:0 28px 90px rgba(40,0,10,.28)}
+.adh-detail-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:18px}.adh-detail-modal-head h3{display:flex;align-items:center;gap:9px;margin:0;color:#35232A;font-size:16px;font-weight:800}.adh-detail-modal-head p{margin:6px 0 0;color:#908187;font-size:11px}
+.adh-detail-close{width:32px;height:32px;flex:none;border:0;border-radius:9px;color:#806B71;background:#F8F3F4;font-size:23px;line-height:1;cursor:pointer}
+.adh-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.adh-detail-field{min-width:0;padding:13px 14px;border:1px solid #EFE6E7;border-radius:11px;background:#FCFAFA}.adh-detail-field span{display:block;margin-bottom:7px;color:#A08F94;font-size:9px;font-weight:800;letter-spacing:.06em}.adh-detail-field strong{display:block;color:#433238;font-size:12px;font-weight:600;line-height:1.55;overflow-wrap:anywhere;white-space:pre-wrap}.adh-detail-field-wide{grid-column:1/-1}
 html.adh-history-modal-lock,body.adh-history-modal-lock{overflow:hidden!important}
-@media(max-width:640px){.adh-history-card{padding:15px 12px 12px}.adh-history-search{width:100%}.adh-detail-overlay{padding:12px}.adh-detail-modal{width:calc(100vw - 24px);height:min(536px,calc(100vh - 24px));height:min(536px,calc(100dvh - 24px));max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);border-radius:15px}.adh-detail-modal-head{padding:15px 15px 13px}.adh-detail-modal-head h3{font-size:15px}.adh-detail-grid{grid-template-columns:1fr;gap:9px;padding:14px 15px 16px}.adh-detail-field-wide{grid-column:auto}}
+@media(max-width:640px){.adh-history-card{padding:15px 12px 12px}.adh-history-tools{width:100%;justify-content:stretch}.adh-history-search{width:100%;flex:1 1 100%}.adh-history-delete-form{width:100%}.adh-history-delete-btn{width:100%}.adh-detail-modal{padding:16px;border-radius:15px}.adh-detail-grid{grid-template-columns:1fr}.adh-detail-field-wide{grid-column:auto}}
 
 </style>
 
@@ -3177,6 +3201,69 @@ html.adh-history-modal-lock,body.adh-history-modal-lock{overflow:hidden!importan
 
     |--------------------------------------------------------------------------
 
+    | KONFIRMASI HAPUS RIWAYAT
+
+    |--------------------------------------------------------------------------
+
+    | Menggunakan modal konfirmasi yang sama dengan Hapus Per Tahun/Tanggal.
+    | Hanya submit form setelah pengguna memilih Hapus.
+
+    */
+
+    window.confirmDeleteHistory =
+
+      async function(form){
+
+        const count = Number(@json($adhHistoryTotal) || 0);
+
+        const witelName = @json($witel);
+
+        if (count <= 0){
+
+          await ahShowUiAlert({
+
+            type:'error',
+
+            title:'Riwayat Kosong',
+
+            message:'Tidak ada riwayat penghapusan yang bisa dihapus untuk Witel ini.',
+
+            confirmText:'OK'
+
+          });
+
+          return;
+
+        }
+
+        const confirmed =
+
+          await ahShowUiConfirm({
+
+            title:'Hapus Riwayat?',
+
+            message:`Apakah kamu yakin ingin menghapus seluruh <strong>${count.toLocaleString('id-ID')} riwayat penghapusan</strong> untuk <strong>${ahEscapeUiHtml(witelName)}</strong>? Data Fallout asli tidak akan dihapus. Tindakan ini tidak dapat dibatalkan.`,
+
+            confirmText:'Hapus Riwayat',
+
+            cancelText:'Batal'
+
+          });
+
+        if (!confirmed){
+
+          return;
+
+        }
+
+        HTMLFormElement.prototype.submit.call(form);
+
+      };
+
+    /*
+
+    |--------------------------------------------------------------------------
+
     | INIT
 
     |--------------------------------------------------------------------------
@@ -3258,10 +3345,6 @@ html.adh-history-modal-lock,body.adh-history-modal-lock{overflow:hidden!importan
     root.dataset.adhInitialized = '1';
     var overlay = document.getElementById('adhDetailOverlay');
     var closeButton = document.getElementById('adhDetailClose');
-    // Let position:fixed use the browser viewport even if the page container has transforms/overflow.
-    if (overlay && document.body && overlay.parentElement !== document.body) {
-        document.body.appendChild(overlay);
-    }
     function setText(id, value){
         var element = document.getElementById(id);
         if (element) element.textContent = value && String(value).trim() ? value : '-';

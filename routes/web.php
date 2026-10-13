@@ -4191,6 +4191,50 @@ Route::delete(
 
 )->name('arsip.hapus.tahun');
 
+    /*
+    |--------------------------------------------------------------------------
+    | ARSIP & HAPUS - RIWAYAT PENGHAPUSAN
+    |--------------------------------------------------------------------------
+    */
+
+    Route::delete(
+        '/dashboard/{witel}/arsip-hapus/riwayat',
+        function (string $witel) {
+            $witel = \Illuminate\Support\Str::lower(trim($witel));
+
+            abort_unless(
+                in_array($witel, ['jaktim', 'jakpus', 'jaksel'], true),
+                404
+            );
+
+            abort_unless(
+                \Illuminate\Support\Facades\Schema::hasTable('deleted_fallout_histories'),
+                500,
+                'Tabel riwayat penghapusan belum tersedia.'
+            );
+
+            $deletedCount = \Illuminate\Support\Facades\DB::table(
+                'deleted_fallout_histories'
+            )
+                ->where('witel_slug', $witel)
+                ->delete();
+
+            return redirect()
+                ->route('dashboard.menu', [
+                    'witel' => $witel,
+                    'menu' => 'arsip-hapus',
+                ])
+                ->with(
+                    'status',
+                    number_format($deletedCount, 0, ',', '.')
+                    . ' riwayat penghapusan untuk Witel '
+                    . strtoupper($witel)
+                    . ' berhasil dihapus. Data Fallout asli tidak dihapus.'
+                );
+        }
+    )->name('arsip-hapus.riwayat.destroy');
+
+
 
 
 

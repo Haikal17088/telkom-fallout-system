@@ -1,36 +1,26 @@
 {{--
-    Dashboard overview: ringkasan dari FalloutData yang benar-benar tersimpan.
-    Semua pilihan filter dibangun dari relasi batch.branch dan tanggal pada data.
-    Tidak menggunakan data contoh / angka hardcode.
+    Dashboard overview: semua opsi dan angka diambil dari data database.
+    Filter cabang menggunakan kode cabang yang stabil melalui relasi:
+    fallout_data -> upload_batches -> branches.
 --}}
 @php
-    $dashboardAllRows = \App\Models\FalloutData::query()
-        ->with('batch.branch')
+    $dashboardAllCount = \App\Models\FalloutData::query()->count();
+
+    $dashboardBranches = \App\Models\Branch::query()
+        ->select(['branch_id', 'kode_cabang', 'nama_cabang'])
+        ->orderBy('nama_cabang')
+        ->get();
+
+    // Opsi filter berasal dari nilai yang benar-benar ada di fallout_data.
+    $dashboardYears = \App\Models\FalloutData::query()
+        ->whereNotNull('tanggal')
+        ->select('tanggal')
+        ->distinct()
         ->orderByDesc('tanggal')
-        ->orderByDesc('row_id')
-        ->get([
-            'row_id',
-            'batch_id',
-            'tanggal',
-            'resolved_eskalasi',
-            'status',
-            'sto',
-        ]);
-
-    $dashboardBranches = $dashboardAllRows
-        ->map(fn ($row) => optional($row->batch)->branch)
-        ->filter(fn ($branch) => $branch && $branch->branch_id !== null)
-        ->unique('branch_id')
-        ->sortBy('nama_cabang', SORT_NATURAL | SORT_FLAG_CASE)
-        ->values();
-
-    $dashboardYears = $dashboardAllRows
-        ->map(function ($row) {
-            if (!$row->tanggal) {
-                return null;
-            }
+        ->pluck('tanggal')
+        ->map(function ($date) {
             try {
-                return \Carbon\Carbon::parse($row->tanggal)->format('Y');
+                return \Carbon\Carbon::parse($date)->format('Y');
             } catch (\Throwable $e) {
                 return null;
             }
@@ -40,32 +30,92 @@
         ->sortDesc()
         ->values();
 
-    $dashboardSelectedBranch = trim((string) request()->query('cabang', 'semua'));
+    $dashboardStos = \App\Models\FalloutData::query()
+        ->whereNotNull('sto')
+        ->whereRaw("TRIM(COALESCE(sto, '')) <> ''")
+        ->select('sto')
+        ->distinct()
+        ->orderBy('sto')
+        ->pluck('sto')
+        ->map(fn ($sto) => strtoupper(trim((string) $sto)))
+        ->filter()
+        ->unique()
+        ->sort(SORT_NATURAL | SORT_FLAG_CASE)
+        ->values();
+
+    // Status adalah nilai mentah di kolom fallout_data.status, bukan angka contoh.
+    $dashboardStatuses = \App\Models\FalloutData::query()
+        ->whereNotNull('status')
+        ->whereRaw("TRIM(COALESCE(status, '')) <> ''")
+        ->select('status')
+        ->distinct()
+        ->orderBy('status')
+        ->pluck('status')
+        ->map(fn ($status) => strtolower(trim((string) $status)))
+        ->filter()
+        ->unique()
+        ->sort(SORT_NATURAL | SORT_FLAG_CASE)
+        ->values();
+
+    $dashboardStatusLabel = static function ($value) {
+        $label = ucwords(str_replace(['_', '-'], ' ', strtolower(trim((string) $value))));
+        return str_replace(['Oss', 'Dit'], ['OSS', 'DIT'], $label);
+    };
+
+    // Terima nilai dari URL lama (ID, kode, atau nama cabang), tetapi gunakan kode
+    // cabang sebagai nilai kanonis di URL dan di query database.
+    $dashboardRawBranch = trim((string) request()->query('cabang', 'semua'));
+    $dashboardSelectedBranchRecord = null;
+    if ($dashboardRawBranch !== '' && strtolower($dashboardRawBranch) !== 'semua') {
+        $rawBranchLower = strtolower($dashboardRawBranch);
+        $dashboardSelectedBranchRecord = $dashboardBranches->first(function ($branch) use ($dashboardRawBranch, $rawBranchLower) {
+            $branchName = trim((string) ($branch->nama_cabang ?? ''));
+            $branchNameWithoutPrefix = preg_replace('/^witel\s+/i', '', $branchName) ?? $branchName;
+            return (string) $branch->branch_id === $dashboardRawBranch
+                || strtolower(trim((string) ($branch->kode_cabang ?? ''))) === $rawBranchLower
+                || strtolower($branchName) === $rawBranchLower
+                || strtolower($branchNameWithoutPrefix) === $rawBranchLower;
+        });
+    }
+    $dashboardSelectedBranch = $dashboardSelectedBranchRecord
+        ? strtolower(trim((string) $dashboardSelectedBranchRecord->kode_cabang))
+        : 'semua';
+
     $dashboardSelectedYear = trim((string) request()->query('tahun', 'semua'));
     $dashboardSelectedMonth = trim((string) request()->query('bulan', 'semua'));
+    $dashboardRawSto = trim((string) request()->query('sto', 'semua'));
+    $dashboardSelectedSto = ($dashboardRawSto === '' || strtolower($dashboardRawSto) === 'semua')
+        ? 'semua'
+        : strtoupper($dashboardRawSto);
     $dashboardSelectedStatus = strtolower(trim((string) request()->query('status', 'semua')));
 
-    if ($dashboardSelectedBranch !== 'semua' && !$dashboardBranches->contains(fn ($branch) => (string) $branch->branch_id === $dashboardSelectedBranch)) {
-        $dashboardSelectedBranch = 'semua';
-    }
     if ($dashboardSelectedYear !== 'semua' && !$dashboardYears->contains($dashboardSelectedYear)) {
         $dashboardSelectedYear = 'semua';
     }
     if (!in_array($dashboardSelectedMonth, ['semua', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'], true)) {
         $dashboardSelectedMonth = 'semua';
     }
-    if (!in_array($dashboardSelectedStatus, ['semua', 'resolved', 'belum_selesai', 'eskalasi_dit'], true)) {
+    if ($dashboardSelectedSto !== 'semua' && !$dashboardStos->contains($dashboardSelectedSto)) {
+        $dashboardSelectedSto = 'semua';
+    }
+    if ($dashboardSelectedStatus !== 'semua' && !$dashboardStatuses->contains($dashboardSelectedStatus)) {
         $dashboardSelectedStatus = 'semua';
     }
 
     $dashboardHeroBranchLabel = 'Semua Cabang';
-    if ($dashboardSelectedBranch !== 'semua') {
-        $dashboardHeroBranch = $dashboardBranches->first(
-            fn ($branch) => (string) $branch->branch_id === $dashboardSelectedBranch
-        );
-        $dashboardHeroBranchLabel = optional($dashboardHeroBranch)->nama_cabang
-            ?: (optional($dashboardHeroBranch)->kode_cabang ?: 'Cabang Terpilih');
+    if ($dashboardSelectedBranchRecord) {
+        $branchLabel = trim((string) ($dashboardSelectedBranchRecord->nama_cabang ?? ''));
+        $branchLabel = preg_replace('/^witel\s+/i', '', $branchLabel) ?? $branchLabel;
+        $dashboardHeroBranchLabel = $branchLabel !== ''
+            ? $branchLabel
+            : strtoupper((string) ($dashboardSelectedBranchRecord->kode_cabang ?? 'Cabang Terpilih'));
     }
+
+    $dashboardActiveFilter = $dashboardSelectedBranch !== 'semua'
+        || $dashboardSelectedYear !== 'semua'
+        || $dashboardSelectedMonth !== 'semua'
+        || $dashboardSelectedSto !== 'semua'
+        || $dashboardSelectedStatus !== 'semua';
 
     $dashboardGetDate = static function ($value) {
         if (!$value) {
@@ -78,54 +128,56 @@
         }
     };
 
+    // Klasifikasi kartu dan donut berdasarkan kolom penyelesaian/eskalasi.
     $dashboardClassifyStatus = static function ($row) {
         $resolution = strtolower(trim((string) ($row->resolved_eskalasi ?? '')));
-        $rawStatus = strtolower(trim((string) ($row->status ?? '')));
         $resolutionKey = preg_replace('/[\s-]+/u', '_', $resolution) ?? $resolution;
-        $rawStatusKey = preg_replace('/[\s-]+/u', '_', $rawStatus) ?? $rawStatus;
-
         if ($resolutionKey === 'resolved') {
             return 'resolved';
         }
-        if (
-            str_contains($resolutionKey, 'eskalasi') ||
-            str_contains($rawStatusKey, 'eskalasi_dit')
-        ) {
+        if (str_contains($resolutionKey, 'eskalasi')) {
             return 'eskalasi_dit';
         }
         return 'belum_selesai';
     };
 
-    $dashboardBaseRows = $dashboardAllRows->filter(function ($row) use (
-        $dashboardSelectedBranch,
-        $dashboardSelectedYear,
-        $dashboardSelectedMonth,
-        $dashboardGetDate
-    ) {
-        $branch = optional($row->batch)->branch;
-        if ($dashboardSelectedBranch !== 'semua' && (string) ($branch->branch_id ?? '') !== $dashboardSelectedBranch) {
-            return false;
-        }
+    // FILTER BENAR-BENAR DIJALANKAN DI DATABASE.
+    // Pakai kode cabang, bukan angka branch_id yang bisa berbeda di database lain.
+    $dashboardFilteredQuery = \Illuminate\Support\Facades\DB::table('fallout_data as fd')
+        ->leftJoin('upload_batches as ub', 'ub.batch_id', '=', 'fd.batch_id')
+        ->leftJoin('branches as br', 'br.branch_id', '=', 'ub.branch_id')
+        ->select([
+            'fd.row_id',
+            'fd.batch_id',
+            'fd.tanggal',
+            'fd.resolved_eskalasi',
+            'fd.status',
+            'fd.sto',
+            'ub.branch_id as dashboard_branch_id',
+            'br.kode_cabang as dashboard_branch_code',
+            'br.nama_cabang as dashboard_branch_name',
+        ]);
 
-        if ($dashboardSelectedYear !== 'semua' || $dashboardSelectedMonth !== 'semua') {
-            $date = $dashboardGetDate($row->tanggal);
-            if (!$date) {
-                return false;
-            }
-            if ($dashboardSelectedYear !== 'semua' && $date->format('Y') !== $dashboardSelectedYear) {
-                return false;
-            }
-            if ($dashboardSelectedMonth !== 'semua' && $date->format('n') !== $dashboardSelectedMonth) {
-                return false;
-            }
-        }
+    if ($dashboardSelectedBranch !== 'semua') {
+        $dashboardFilteredQuery->whereRaw("LOWER(TRIM(COALESCE(br.kode_cabang, ''))) = ?", [$dashboardSelectedBranch]);
+    }
+    if ($dashboardSelectedYear !== 'semua') {
+        $dashboardFilteredQuery->whereYear('fd.tanggal', (int) $dashboardSelectedYear);
+    }
+    if ($dashboardSelectedMonth !== 'semua') {
+        $dashboardFilteredQuery->whereMonth('fd.tanggal', (int) $dashboardSelectedMonth);
+    }
+    if ($dashboardSelectedSto !== 'semua') {
+        $dashboardFilteredQuery->whereRaw("UPPER(TRIM(COALESCE(fd.sto, ''))) = ?", [$dashboardSelectedSto]);
+    }
+    if ($dashboardSelectedStatus !== 'semua') {
+        $dashboardFilteredQuery->whereRaw("LOWER(TRIM(COALESCE(fd.status, ''))) = ?", [$dashboardSelectedStatus]);
+    }
 
-        return true;
-    })->values();
-
-    $dashboardFilteredRows = $dashboardBaseRows->filter(function ($row) use ($dashboardSelectedStatus, $dashboardClassifyStatus) {
-        return $dashboardSelectedStatus === 'semua' || $dashboardClassifyStatus($row) === $dashboardSelectedStatus;
-    })->values();
+    $dashboardFilteredRows = $dashboardFilteredQuery
+        ->orderByDesc('fd.tanggal')
+        ->orderByDesc('fd.row_id')
+        ->get();
 
     $dashboardTotal = $dashboardFilteredRows->count();
     $dashboardResolved = $dashboardFilteredRows->filter(fn ($row) => $dashboardClassifyStatus($row) === 'resolved')->count();
@@ -180,7 +232,7 @@
     .dash-panel-title{font-size:14px;font-weight:800;color:#20161A;display:flex;align-items:center;gap:9px}
     .dash-panel-title:before{content:"";width:4px;height:17px;border-radius:5px;background:#C8102E}
     .dash-panel-subtitle{font-size:11px;color:#7A6B6F;margin-top:4px;line-height:1.5}
-    .dash-filter-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+    .dash-filter-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
     .dash-filter-field{display:grid;gap:7px;min-width:0}
     .dash-filter-field label{font-size:10px;font-weight:800;letter-spacing:.07em;color:#7A6B6F;text-transform:uppercase}
     .dash-filter-field select{width:100%;min-width:0;height:42px;padding:0 12px;border:1px solid #E7DEDD;border-radius:10px;background:#fff;color:#30252a;font:500 12px 'Inter',sans-serif;outline:none}
@@ -224,10 +276,10 @@
     .dash-info-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:12px;border-bottom:1px solid #f1e9e8;font-size:11px;color:#7A6B6F}
     .dash-info-row:last-child{padding-bottom:0;border:0}.dash-info-row strong{font-size:13px;color:#20161A;text-align:right}
     .dash-info-badge{display:inline-flex;align-items:center;gap:6px;color:#168354;background:#eaf8f0;border-radius:999px;padding:5px 9px;font-size:10px;font-weight:800}
-    .dash-info-badge:before{content:"";width:6px;height:6px;background:#20ad76;border-radius:50%}
+    .dash-info-badge:before{content:"";width:6px;height:6px;background:#20ad76;border-radius:50%}.dash-active-filter{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 10px;background:#fff2d9;color:#92620b;font-size:10px;font-weight:800;border:1px solid #f0dfb9}.dash-filter-status{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .dash-empty{padding:25px 14px;text-align:center;background:#fcf9f8;border:1px dashed #e8d8d8;border-radius:12px;color:#7A6B6F;font-size:12px}
-    @media(max-width:1200px){.dash-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dash-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.dash-analytics-grid{grid-template-columns:1fr}}
-    @media(max-width:640px){.dash-overview{gap:12px}.dash-overview-hero{padding:19px;border-radius:14px}.dash-overview-hero h2{font-size:20px}.dash-hero-pills{margin-top:14px}.dash-panel,.dash-chart-card{padding:15px;border-radius:14px}.dash-filter-grid{grid-template-columns:1fr 1fr;gap:10px}.dash-filter-field select{height:40px;padding:0 8px;font-size:11px}.dash-stats{gap:9px}.dash-stat{padding:13px}.dash-stat-value{font-size:23px}.dash-stat-label{font-size:10px}.dash-stat-note{font-size:9px}.dash-donut-layout{grid-template-columns:1fr;gap:18px}.dash-donut{width:150px;height:150px}.dash-donut-hole{width:100px;height:100px}.dash-legend{width:100%}.dash-month-bars{gap:4px}.dash-month-label{font-size:8px}.dash-month-value{font-size:8px}}
+    @media(max-width:1200px){.dash-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.dash-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.dash-analytics-grid{grid-template-columns:1fr}}
+    @media(max-width:640px){.dash-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dash-overview{gap:12px}.dash-overview-hero{padding:19px;border-radius:14px}.dash-overview-hero h2{font-size:20px}.dash-hero-pills{margin-top:14px}.dash-panel,.dash-chart-card{padding:15px;border-radius:14px}.dash-filter-grid{grid-template-columns:1fr 1fr;gap:10px}.dash-filter-field select{height:40px;padding:0 8px;font-size:11px}.dash-stats{gap:9px}.dash-stat{padding:13px}.dash-stat-value{font-size:23px}.dash-stat-label{font-size:10px}.dash-stat-note{font-size:9px}.dash-donut-layout{grid-template-columns:1fr;gap:18px}.dash-donut{width:150px;height:150px}.dash-donut-hole{width:100px;height:100px}.dash-legend{width:100%}.dash-month-bars{gap:4px}.dash-month-label{font-size:8px}.dash-month-value{font-size:8px}}
 </style>
 
 <section class="dash-overview" aria-label="Ringkasan dashboard Fallout">
@@ -243,8 +295,11 @@
             </span>
             <span class="dash-hero-pill">
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><ellipse cx="12" cy="6" rx="7.5" ry="3" stroke="currentColor" stroke-width="1.7"/><path d="M4.5 6v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6M4.5 12v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6" stroke="currentColor" stroke-width="1.7"/></svg>
-                {{ number_format($dashboardAllRows->count(), 0, ',', '.') }} Data
+                {{ number_format($dashboardTotal, 0, ',', '.') }} Data
             </span>
+            @if ($dashboardActiveFilter)
+                <span class="dash-hero-pill">Filter Aktif</span>
+            @endif
         </div>
     </header>
 
@@ -264,7 +319,13 @@
                     <select id="dashFilterCabang" name="cabang">
                         <option value="semua" {{ $dashboardSelectedBranch === 'semua' ? 'selected' : '' }}>Semua Cabang</option>
                         @foreach ($dashboardBranches as $branch)
-                            <option value="{{ $branch->branch_id }}" {{ $dashboardSelectedBranch === (string) $branch->branch_id ? 'selected' : '' }}>{{ $branch->nama_cabang ?: $branch->kode_cabang }}</option>
+                            @php
+                                $branchLabel = trim((string) ($branch->nama_cabang ?? ''));
+                                $branchLabel = preg_replace('/^witel\s+/i', '', $branchLabel) ?? $branchLabel;
+                                $branchLabel = $branchLabel !== '' ? $branchLabel : strtoupper((string) $branch->kode_cabang);
+                                $branchCode = strtolower(trim((string) $branch->kode_cabang));
+                            @endphp
+                            <option value="{{ $branchCode }}" {{ $dashboardSelectedBranch === $branchCode ? 'selected' : '' }}>{{ $branchLabel }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -286,17 +347,31 @@
                     </select>
                 </div>
                 <div class="dash-filter-field">
+                    <label for="dashFilterSto">STO</label>
+                    <select id="dashFilterSto" name="sto">
+                        <option value="semua" {{ $dashboardSelectedSto === 'semua' ? 'selected' : '' }}>Semua STO</option>
+                        @foreach ($dashboardStos as $sto)
+                            <option value="{{ $sto }}" {{ $dashboardSelectedSto === $sto ? 'selected' : '' }}>{{ $sto }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="dash-filter-field">
                     <label for="dashFilterStatus">Status</label>
                     <select id="dashFilterStatus" name="status">
                         <option value="semua" {{ $dashboardSelectedStatus === 'semua' ? 'selected' : '' }}>Semua Status</option>
-                        <option value="resolved" {{ $dashboardSelectedStatus === 'resolved' ? 'selected' : '' }}>Resolved</option>
-                        <option value="belum_selesai" {{ $dashboardSelectedStatus === 'belum_selesai' ? 'selected' : '' }}>Belum Selesai</option>
-                        <option value="eskalasi_dit" {{ $dashboardSelectedStatus === 'eskalasi_dit' ? 'selected' : '' }}>Eskalasi DIT</option>
+                        @foreach ($dashboardStatuses as $statusValue)
+                            <option value="{{ $statusValue }}" {{ $dashboardSelectedStatus === $statusValue ? 'selected' : '' }}>{{ $dashboardStatusLabel($statusValue) }}</option>
+                        @endforeach
                     </select>
                 </div>
             </div>
             <div class="dash-filter-actions">
-                <div class="dash-filter-count">Menampilkan <strong>{{ number_format($dashboardTotal, 0, ',', '.') }}</strong> dari <strong>{{ number_format($dashboardAllRows->count(), 0, ',', '.') }}</strong> data Fallout sesuai filter.</div>
+                <div class="dash-filter-status">
+                    @if ($dashboardActiveFilter)
+                        <span class="dash-active-filter">Filter Aktif</span>
+                    @endif
+                    <div class="dash-filter-count">Menampilkan <strong>{{ number_format($dashboardTotal, 0, ',', '.') }}</strong> dari <strong>{{ number_format($dashboardAllCount, 0, ',', '.') }}</strong> data Fallout sesuai filter.</div>
+                </div>
                 <div class="dash-actions">
                     <a class="dash-btn" href="{{ route('dashboard') }}" id="dashboardFilterReset">Reset Filter</a>
                     <button class="dash-btn dash-btn-primary" type="submit">Terapkan Filter</button>
@@ -371,7 +446,7 @@
 
     <section class="dash-chart-card">
         <div class="dash-chart-title">Distribusi Fallout per Bulan</div>
-        <div class="dash-chart-description">Grafik mengikuti cabang, tahun, bulan, dan status yang dipilih.</div>
+        <div class="dash-chart-description">Grafik mengikuti cabang, tahun, bulan, STO, dan status yang dipilih.</div>
         @if ($dashboardTotal > 0)
             <div class="dash-month-bars" role="img" aria-label="Grafik jumlah Fallout per bulan">
                 @foreach ($dashboardMonthNames as $monthNumber => $monthName)
@@ -398,23 +473,31 @@
 
 <script>
 (function () {
-    var form = document.getElementById('dashboardOverviewFilter');
-    if (!form || form.dataset.spaBound === '1') return;
-    form.dataset.spaBound = '1';
+    'use strict';
 
-    form.addEventListener('submit', function (event) {
-        event.preventDefault();
-        var url = new URL(form.action, window.location.href);
-        var params = new URLSearchParams();
-        new FormData(form).forEach(function (value, key) {
-            if (typeof value === 'string' && value.trim() !== '') params.set(key, value.trim());
+    var form = document.getElementById('dashboardOverviewFilter');
+    if (!form || form.dataset.autoApplyBound === '1') {
+        return;
+    }
+    form.dataset.autoApplyBound = '1';
+
+    form.addEventListener('submit', function () {
+        form.dataset.submitting = '1';
+    });
+
+    form.querySelectorAll('select').forEach(function (select) {
+        select.addEventListener('change', function () {
+            if (form.dataset.submitting === '1') {
+                return;
+            }
+            form.dataset.submitting = '1';
+            if (typeof form.requestSubmit === 'function') {
+                form.requestSubmit();
+            } else {
+                HTMLFormElement.prototype.submit.call(form);
+            }
         });
-        url.search = params.toString();
-        if (typeof window.tfNavigate === 'function') {
-            window.tfNavigate(url.href, {push: true});
-        } else {
-            window.location.assign(url.href);
-        }
     });
 })();
 </script>
+
