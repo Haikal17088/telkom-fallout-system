@@ -28,7 +28,8 @@ class FalloutData extends Model
         'ket',
         'uploaded_by',
         'uploaded_at',
-    ];
+        'tiket_eskalasi',
+];
 
     protected $casts = [
         'tanggal'    => 'date',

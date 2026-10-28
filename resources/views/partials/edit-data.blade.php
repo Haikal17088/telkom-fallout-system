@@ -56,32 +56,28 @@
       return strtoupper($value);
   };
 
+  // Normalisasi status agar huruf besar/kecil dan separator konsisten.
+  $normalizeStatusKey = static function ($value): string {
+      $value = strtolower(trim((string) ($value ?? '')));
+      $value = preg_replace('/[\s\/-]+/u', '_', $value) ?? $value;
+      return preg_replace('/_+/', '_', $value) ?? $value;
+  };
+
   // Dipetakan ke bentuk array untuk tabel & modal.
+  $rows = $dbRows->values()->map(function ($r, $i) use ($normalizeSto, $normalizeStatusKey) {
+      $resolvedEskalasi = $normalizeStatusKey($r->resolved_eskalasi ?? '');
+      $statusValue = $normalizeStatusKey($r->status ?? '');
+      $knownStatuses = ['resolved', 'eskalasi', 'cancel', 'eskalasi_dit', 'close', 'pending'];
 
-  $rows = $dbRows->values()->map(function ($r, $i) use ($normalizeSto) {
-
-      $resolvedEskalasi = strtolower(trim((string) ($r->resolved_eskalasi ?? '')));
-
-      $statusValue = strtolower(trim((string) ($r->status ?? '')));
-
-      // Status filter: utamakan nilai RESOLVED/ESKALASI, lalu fallback ke status detail.
-
-      if (in_array($resolvedEskalasi, ['resolved', 'cancel', 'eskalasi_dit', 'close'], true)) {
-
+      // Utamakan kategori utama; gunakan kolom status sebagai fallback.
+      if (in_array($resolvedEskalasi, $knownStatuses, true)) {
           $statusRe = $resolvedEskalasi;
-
-      } elseif (in_array($statusValue, ['cancel', 'eskalasi_dit', 'close'], true)) {
-
+      } elseif (in_array($statusValue, $knownStatuses, true)) {
           $statusRe = $statusValue;
-
       } elseif ($resolvedEskalasi !== '') {
-
           $statusRe = 'lainnya';
-
       } else {
-
           $statusRe = 'lainnya';
-
       }
 
       return [
@@ -106,9 +102,13 @@
 
           'ket'       => $r->ket,
 
+          'tiket_eskalasi' => $r->tiket_eskalasi ?? null,
+
       ];
 
   })->all();
+
+  $availableStatusFilters = collect($rows)->pluck('status_re')->filter()->unique()->values();
 
   // Total keseluruhan sistem (semua witel).
 
@@ -127,11 +127,15 @@
 
     'resolved'     => 'RESOLVED',
 
+    'eskalasi'     => 'ESKALASI',
+
     'cancel'       => 'CANCEL',
 
     'eskalasi_dit' => 'ESKALASI DIT',
 
     'close'        => 'CLOSE',
+
+    'pending'      => 'PENDING',
 
     'lainnya'      => 'ESKALASI',
 
@@ -271,6 +275,14 @@
 
       </button>
 
+      @if ($availableStatusFilters->contains('eskalasi'))
+        <button type="button" class="ed-status-btn ed-status-eskalasi" data-filter="eskalasi">ESKALASI</button>
+      @endif
+
+      @if ($availableStatusFilters->contains('pending'))
+        <button type="button" class="ed-status-btn ed-status-pending" data-filter="pending">PENDING</button>
+      @endif
+
     </div>
 
     <div class="ed-meta" id="edMeta">
@@ -300,6 +312,8 @@
           <th>PIC</th>
 
           <th>Status</th>
+
+          <th>Tiket Eskalasi</th>
 
           <th>KET</th>
 
@@ -334,6 +348,8 @@
             data-status_detail="{{ $r['status'] }}"
 
             data-ket="{{ $r['ket'] }}"
+
+            data-ticket_eskalasi="{{ $r['tiket_eskalasi'] }}"
 
           >
 
@@ -397,6 +413,12 @@
 
             <td>
 
+              {{ $r['tiket_eskalasi'] ?: '-' }}
+
+            </td>
+
+            <td>
+
               {{ $r['ket'] }}
 
             </td>
@@ -439,7 +461,7 @@
 
           <tr>
 
-            <td colspan="8" class="ed-empty">
+            <td colspan="9" class="ed-empty">
 
               Belum ada data untuk witel ini.
 
@@ -453,7 +475,7 @@
 
           @if (count($rows) > 0)
             <tr id="edNoMatchRow" style="display:none">
-              <td colspan="8" class="ed-empty">Tidak ada data yang cocok dengan filter ini.</td>
+              <td colspan="9" class="ed-empty">Tidak ada data yang cocok dengan filter ini.</td>
             </tr>
           @endif
 
@@ -653,6 +675,10 @@
 
             </option>
 
+            <option value="eskalasi">ESKALASI</option>
+
+            <option value="pending">PENDING</option>
+
             <option value="cancel">
 
               CANCEL
@@ -735,6 +761,12 @@
 
         </div>
 
+      </div>
+
+      {{-- TIKET ESKALASI --}}
+      <div class="ed-form-group">
+        <label for="edTiketEskalasi">Tiket Eskalasi</label>
+        <input type="text" id="edTiketEskalasi" placeholder="Nomor tiket eskalasi (opsional)" maxlength="255">
       </div>
 
     </form>
@@ -1221,15 +1253,16 @@
     font-size:12px;
   }
 
-  /* 8 kolom; Deskripsi tidak ditampilkan di tabel Edit Data. */
+  /* 9 kolom; lebar total 100% agar Tiket Eskalasi dan Aksi sama-sama terlihat. */
   .ed-table thead th:nth-child(1){width:4%}   /* No */
-  .ed-table thead th:nth-child(2){width:22%}  /* No/Order ID + tombol preview */
-  .ed-table thead th:nth-child(3){width:8%}   /* STO */
-  .ed-table thead th:nth-child(4){width:14%}  /* Tanggal */
-  .ed-table thead th:nth-child(5){width:11%}  /* PIC */
-  .ed-table thead th:nth-child(6){width:14%}  /* Status */
-  .ed-table thead th:nth-child(7){width:15%}  /* KET */
-  .ed-table thead th:nth-child(8){width:12%}  /* Aksi */
+  .ed-table thead th:nth-child(2){width:18%}  /* No/Order ID + tombol preview */
+  .ed-table thead th:nth-child(3){width:7%}   /* STO */
+  .ed-table thead th:nth-child(4){width:12%}  /* Tanggal */
+  .ed-table thead th:nth-child(5){width:9%}   /* PIC */
+  .ed-table thead th:nth-child(6){width:12%}  /* Status */
+  .ed-table thead th:nth-child(7){width:14%}  /* Tiket Eskalasi */
+  .ed-table thead th:nth-child(8){width:10%}  /* KET */
+  .ed-table thead th:nth-child(9){width:14%}  /* Aksi */
 
   .ed-table thead th{
 
@@ -2203,9 +2236,17 @@
 
       document.getElementById('edKet');
 
+    const fTiketEskalasi =
+
+      document.getElementById('edTiketEskalasi');
+
     const statusReLabel = {
 
       resolved: 'RESOLVED',
+
+      eskalasi: 'ESKALASI',
+
+      pending: 'PENDING',
 
       cancel: 'CANCEL',
 
@@ -2818,6 +2859,10 @@
 
           row.dataset.ket || '';
 
+        fTiketEskalasi.value =
+
+          row.dataset.ticket_eskalasi || '';
+
       } else {
 
         // TAMBAH
@@ -3257,7 +3302,11 @@
 
         ket:
 
-          fKet.value.trim()
+          fKet.value.trim(),
+
+        tiket_eskalasi:
+
+          fTiketEskalasi.value.trim()
 
       };
 

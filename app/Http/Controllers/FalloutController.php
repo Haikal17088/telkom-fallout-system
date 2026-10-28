@@ -104,6 +104,12 @@ class FalloutController extends Controller
                 'nullable',
                 'string',
             ],
+
+            'tiket_eskalasi' => [
+                'nullable',
+                'string',
+                'max:255',
+            ],
         ]);
     }
 
@@ -127,6 +133,21 @@ class FalloutController extends Controller
 
         if ($pic === '') {
             $pic = auth()->user()->name ?? null;
+        }
+
+        $branchDuplicate = FalloutData::forWitel($witel)
+            ->whereRaw('LOWER(TRIM(order_id)) = ?', [strtolower($orderId)])
+            ->whereDate('tanggal', $tanggal)
+            ->exists();
+
+        if ($branchDuplicate) {
+            return response()->json([
+                'success' => false,
+                'message' => "Order ID {$orderId} sudah terdaftar pada Witel dan tanggal ini.",
+                'errors' => [
+                    'order_id' => ['Order ID sudah terdaftar pada Witel dan tanggal ini.'],
+                ],
+            ], 422);
         }
 
         try {
@@ -190,10 +211,10 @@ class FalloutController extends Controller
                 if ($duplicate) {
                     return response()->json([
                         'success' => false,
-                        'message' => "Order ID {$orderId} sudah ada pada batch data ini. Gunakan Order ID lain atau edit data yang sudah ada.",
+                        'message' => "Order ID {$orderId} sudah terdaftar pada Witel dan tanggal ini. Gunakan Order ID lain atau edit data yang sudah ada.",
                         'errors'  => [
                             'order_id' => [
-                                'Order ID sudah ada pada batch data ini.',
+                                'Order ID sudah terdaftar pada Witel dan tanggal ini.',
                             ],
                         ],
                     ], 422);
@@ -208,13 +229,12 @@ class FalloutController extends Controller
                         : null,
                     'tanggal'           => $tanggal,
                     'pic'               => $pic,
-                    'resolved_eskalasi' => $this->normalize(
-                        $data['resolved_eskalasi'] ?? null
-                    ),
+                    'resolved_eskalasi' => strtoupper((string) $this->normalize($data['resolved_eskalasi'] ?? null)),
                     'status'            => $this->normalize(
                         $data['status'] ?? null
                     ),
-                    'ket'               => $data['ket'] ?? null,
+                    'ket' => $data['ket'] ?? null,
+                    'tiket_eskalasi' => trim((string) ($data['tiket_eskalasi'] ?? '')) ?: null,
                     'uploaded_by'       => auth()->id(),
                     'uploaded_at'       => now(),
                 ]);
@@ -263,7 +283,7 @@ class FalloutController extends Controller
             ) {
                 return response()->json([
                     'success' => false,
-                    'message' => "Order ID {$orderId} sudah ada pada batch data ini. Gunakan Order ID lain atau edit data yang sudah ada.",
+                    'message' => "Order ID {$orderId} sudah terdaftar pada Witel dan tanggal ini. Gunakan Order ID lain atau edit data yang sudah ada.",
                 ], 422);
             }
 
@@ -322,25 +342,19 @@ class FalloutController extends Controller
         }
 
         try {
-            $duplicate = FalloutData::where(
-                'batch_id',
-                $row->batch_id
-            )->where(
-                'order_id',
-                $orderId
-            )->where(
-                'row_id',
-                '!=',
-                $row->row_id
-            )->exists();
+            $duplicate = FalloutData::forWitel($witel)
+                ->whereRaw('LOWER(TRIM(order_id)) = ?', [strtolower($orderId)])
+                ->whereDate('tanggal', $tanggal)
+                ->where('row_id', '!=', $row->row_id)
+                ->exists();
 
             if ($duplicate) {
                 return response()->json([
                     'success' => false,
-                    'message' => "Order ID {$orderId} sudah digunakan pada batch data ini.",
+                    'message' => "Order ID {$orderId} sudah terdaftar pada Witel dan tanggal ini.",
                     'errors'  => [
                         'order_id' => [
-                            'Order ID sudah digunakan pada batch data ini.',
+                            'Order ID sudah terdaftar pada Witel dan tanggal ini.',
                         ],
                     ],
                 ], 422);
@@ -354,13 +368,12 @@ class FalloutController extends Controller
                     : null,
                 'tanggal'           => $tanggal,
                 'pic'               => $pic,
-                'resolved_eskalasi' => $this->normalize(
-                    $data['resolved_eskalasi'] ?? null
-                ),
+                'resolved_eskalasi' => strtoupper((string) $this->normalize($data['resolved_eskalasi'] ?? null)),
                 'status'            => $this->normalize(
                     $data['status'] ?? null
                 ),
-                'ket'               => $data['ket'] ?? null,
+                'ket' => $data['ket'] ?? null,
+                    'tiket_eskalasi' => trim((string) ($data['tiket_eskalasi'] ?? '')) ?: null,
             ]);
 
             /*
@@ -409,7 +422,7 @@ class FalloutController extends Controller
             ) {
                 return response()->json([
                     'success' => false,
-                    'message' => "Order ID {$orderId} sudah digunakan pada batch data ini.",
+                    'message' => "Order ID {$orderId} sudah terdaftar pada Witel dan tanggal ini.",
                 ], 422);
             }
 

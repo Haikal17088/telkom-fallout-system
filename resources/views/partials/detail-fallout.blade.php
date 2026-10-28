@@ -52,6 +52,7 @@
             'fallout_data.resolved_eskalasi',
             'fallout_data.status',
             'fallout_data.ket',
+            'fallout_data.tiket_eskalasi',
             'fallout_data.uploaded_at',
         ]);
 
@@ -178,7 +179,7 @@
          * "Eskalasi DIT" dan "ESKALASI_DIT" bisa difilter sama.
          */
         $statusReKey = strtolower($statusReRaw);
-        $statusReKey = preg_replace('/[\\s-]+/u', '_', $statusReKey);
+        $statusReKey = preg_replace('/[\\s\\/-]+/u', '_', $statusReKey);
         $statusReKey = preg_replace('/_+/', '_', $statusReKey);
         $statusRe = strtoupper($statusReKey);
 
@@ -255,7 +256,7 @@
         $rowStatus = strtolower(
             trim((string) ($r->status ?? ''))
         );
-        $rowStatus = preg_replace('/[\\s-]+/u', '_', $rowStatus);
+        $rowStatus = preg_replace('/[\\s\\/-]+/u', '_', $rowStatus);
         $rowStatus = preg_replace('/_+/', '_', $rowStatus);
 
         /*
@@ -269,6 +270,7 @@
             'cancel',
             'eskalasi_dit',
             'close',
+            'pending',
         ];
 
         if (in_array($statusReKey, $filterableStatuses, true)) {
@@ -327,12 +329,17 @@
             'ket' =>
                 $r->ket,
 
+            'tiket_eskalasi' =>
+                $r->tiket_eskalasi ?? null,
+
             'baru' =>
                 $isBaru,
 
         ];
 
     })->all();
+
+    $availableStatusFilters = collect($rows)->pluck('status_re_filter')->filter()->unique()->values();
 
 
     /*
@@ -409,6 +416,7 @@
         'cancel'       => 'CANCEL',
         'eskalasi_dit' => 'ESKALASI DIT',
         'close'        => 'CLOSE',
+        'pending'      => 'PENDING',
         'lainnya'      => 'LAINNYA',
 
     ];
@@ -697,6 +705,14 @@
                 Close
             </button>
 
+            @if ($availableStatusFilters->contains('eskalasi'))
+                <button type="button" class="df-status-btn df-status-eskalasi" data-filter="eskalasi">ESKALASI</button>
+            @endif
+
+            @if ($availableStatusFilters->contains('pending'))
+                <button type="button" class="df-status-btn df-status-pending" data-filter="pending">PENDING</button>
+            @endif
+
         </div>
 
 
@@ -760,6 +776,10 @@
 
                     <th>
                         Status ↕
+                    </th>
+
+                    <th>
+                        Tiket Eskalasi
                     </th>
 
                     <th>
@@ -1045,6 +1065,11 @@
 
                         </td>
 
+                        {{-- TIKET ESKALASI --}}
+                        <td class="df-ticket-cell" title="{{ $r['tiket_eskalasi'] ?: '-' }}">
+                            {{ $r['tiket_eskalasi'] ?: '-' }}
+                        </td>
+
 
                         {{-- =====================================
                              KET
@@ -1062,7 +1087,7 @@
                     <tr>
 
                         <td
-                            colspan="9"
+                            colspan="10"
                             class="df-empty"
                         >
                             Belum ada data untuk witel ini.
@@ -1521,7 +1546,7 @@ body.dfLoadingLock *{
 
 .df-table{
     width:100%;
-    min-width:1280px;
+    min-width:960px;
     border-collapse:separate;
     border-spacing:0;
     table-layout:fixed;
@@ -2112,23 +2137,25 @@ body.dfLoadingLock *{
 
 /* Proporsi tepat 100%. */
 .df-wrap .df-table th:nth-child(1),
-.df-wrap .df-table td:nth-child(1){width:6% !important;}
+.df-wrap .df-table td:nth-child(1){width:5% !important;}
 .df-wrap .df-table th:nth-child(2),
-.df-wrap .df-table td:nth-child(2){width:16% !important;}
+.df-wrap .df-table td:nth-child(2){width:13% !important;}
 .df-wrap .df-table th:nth-child(3),
-.df-wrap .df-table td:nth-child(3){width:23% !important;}
+.df-wrap .df-table td:nth-child(3){width:20% !important;}
 .df-wrap .df-table th:nth-child(4),
-.df-wrap .df-table td:nth-child(4){width:7% !important;}
+.df-wrap .df-table td:nth-child(4){width:6% !important;}
 .df-wrap .df-table th:nth-child(5),
-.df-wrap .df-table td:nth-child(5){width:11% !important;}
+.df-wrap .df-table td:nth-child(5){width:10% !important;}
 .df-wrap .df-table th:nth-child(6),
-.df-wrap .df-table td:nth-child(6){width:8% !important;}
+.df-wrap .df-table td:nth-child(6){width:7% !important;}
 .df-wrap .df-table th:nth-child(7),
-.df-wrap .df-table td:nth-child(7){width:14% !important;}
+.df-wrap .df-table td:nth-child(7){width:10% !important;}
 .df-wrap .df-table th:nth-child(8),
-.df-wrap .df-table td:nth-child(8){width:10% !important;}
+.df-wrap .df-table td:nth-child(8){width:8% !important;}
 .df-wrap .df-table th:nth-child(9),
-.df-wrap .df-table td:nth-child(9){width:5% !important;}
+.df-wrap .df-table td:nth-child(9){width:12% !important;}
+.df-wrap .df-table th:nth-child(10),
+.df-wrap .df-table td:nth-child(10){width:9% !important;}
 
 .df-wrap .df-table thead th{
     height:38px !important;
@@ -2341,6 +2368,14 @@ body.dfLoadingLock *::after {
     pointer-events: none !important;
 }
 
+
+/* Kolom Tiket Eskalasi mengikuti lebar khusus, tidak lagi terpotong menjadi 'Tik…'. */
+.df-wrap .df-ticket-cell{
+    white-space:nowrap !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+    font-size:11px !important;
+}
 </style>
 
 

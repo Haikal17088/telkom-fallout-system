@@ -434,30 +434,117 @@
            LOGIN
            ===================================================== */
 
-        .login-button {
-
-            width: 100%;
-
+        .login-form {
             display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 25px;
+        }
 
+        .form-field label {
+            display: block;
+            margin-bottom: 7px;
+            color: var(--text);
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .form-field input {
+            display: block;
+            width: 100%;
+            height: 44px;
+            padding: 0 13px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: #fff;
+            color: var(--text);
+            font-family: inherit;
+            font-size: 12px;
+            outline: none;
+            transition: border-color 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .form-field input:focus {
+            border-color: var(--red);
+            box-shadow: 0 0 0 3px rgba(200, 16, 46, 0.10);
+        }
+
+        .form-field-error {
+            margin-top: 6px;
+            color: #B42318;
+            font-size: 11px;
+            line-height: 1.45;
+        }
+
+        .login-alert {
+            margin-top: 16px;
+            padding: 10px 12px;
+            border: 1px solid #FECACA;
+            border-radius: 10px;
+            background: #FEF2F2;
+            color: #991B1B;
+            font-size: 11px;
+            line-height: 1.55;
+        }
+
+        .login-status {
+            margin-top: 16px;
+            padding: 10px 12px;
+            border: 1px solid #BBF7D0;
+            border-radius: 10px;
+            background: #F0FDF4;
+            color: #166534;
+            font-size: 11px;
+            line-height: 1.55;
+        }
+
+        .login-options {
+            display: flex;
             align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            font-size: 11px;
+        }
 
-            gap: 14px;
+        .remember-option {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            color: var(--text-soft);
+            cursor: pointer;
+        }
 
-            margin-top: 28px;
+        .remember-option input {
+            width: 14px;
+            height: 14px;
+            accent-color: var(--red);
+        }
 
-            padding:
-                14px
-                14px;
-
-            border-radius: 11px;
-
-            background: var(--red);
-
+        .forgot-link {
+            color: var(--red);
+            font-weight: 600;
             text-decoration: none;
+        }
 
+        .forgot-link:hover {
+            text-decoration: underline;
+        }
+
+        .login-button {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-top: 2px;
+            padding: 12px 14px;
+            border: 0;
+            border-radius: 11px;
+            background: var(--red);
             color: white;
-
+            font-family: inherit;
+            text-align: left;
+            cursor: pointer;
             transition:
                 transform 0.18s ease,
                 box-shadow 0.18s ease,
@@ -534,6 +621,147 @@
                 rgba(255,255,255,0.75);
         }
 
+
+        /* =====================================================
+           LOGIN PROMPT + SPA-LIKE REVEAL
+           ===================================================== */
+
+        .login-prompt {
+            margin-top: 28px;
+            max-height: 100px;
+            opacity: 1;
+            overflow: hidden;
+            transform: translateY(0);
+            transition:
+                max-height 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+                opacity 0.24s ease,
+                transform 0.32s ease,
+                margin-top 0.32s ease;
+        }
+
+        .login-prompt.is-hidden {
+            max-height: 0;
+            margin-top: 0;
+            opacity: 0;
+            transform: translateY(-8px);
+            pointer-events: none;
+        }
+
+        .open-login-button {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px;
+            border: 0;
+            border-radius: 12px;
+            background: var(--red);
+            color: #fff;
+            font-family: inherit;
+            text-align: left;
+            cursor: pointer;
+            box-shadow: 0 5px 12px rgba(200, 16, 46, 0.10);
+            transition:
+                transform 0.2s ease,
+                box-shadow 0.2s ease,
+                background 0.2s ease;
+        }
+
+        .open-login-button:hover {
+            background: var(--red-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 12px 26px rgba(200, 16, 46, 0.22);
+        }
+
+        .open-login-button:focus-visible,
+        .login-back-button:focus-visible {
+            outline: 3px solid rgba(200, 16, 46, 0.28);
+            outline-offset: 3px;
+        }
+
+        .open-login-icon {
+            width: 44px;
+            height: 44px;
+            flex: 0 0 44px;
+            display: grid;
+            place-items: center;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.96);
+            color: var(--red);
+        }
+
+        .open-login-icon svg {
+            width: 19px;
+            height: 19px;
+        }
+
+        .open-login-text {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .open-login-label {
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .open-login-description {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.82);
+        }
+
+        .login-reveal {
+            max-height: 0;
+            margin-top: 0;
+            overflow: hidden;
+            opacity: 0;
+            transform: translateY(12px);
+            pointer-events: none;
+            transition:
+                max-height 0.52s cubic-bezier(0.22, 1, 0.36, 1),
+                margin-top 0.34s ease,
+                opacity 0.28s ease,
+                transform 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .login-reveal.is-open {
+            max-height: 760px;
+            margin-top: 20px;
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+
+        .login-back-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 14px;
+            padding: 4px 0;
+            border: 0;
+            background: transparent;
+            color: var(--text-soft);
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: color 0.18s ease, transform 0.18s ease;
+        }
+
+        .login-back-button:hover {
+            color: var(--red);
+            transform: translateX(-2px);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .login-prompt,
+            .open-login-button,
+            .login-reveal,
+            .login-back-button {
+                transition: none !important;
+            }
+        }
 
         /* =====================================================
            SYSTEM INFO
@@ -909,57 +1137,122 @@
             </p>
 
 
-            <!-- LOGIN -->
-
-            <a
-                href="{{ route('login') }}"
-                class="login-button"
-            >
-
-                <div
-                    class="login-icon"
-                    aria-hidden="true"
+            <!-- Tombol ini membuka form di halaman yang sama; tidak menuju /login. -->
+            <div id="loginPrompt" class="login-prompt">
+                <button
+                    id="openLoginButton"
+                    type="button"
+                    class="open-login-button"
+                    aria-expanded="false"
+                    aria-controls="loginReveal"
                 >
-
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                    >
-
-                        <path
-                            d="M5 12h14"
-                            stroke="white"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                        />
-
-                        <path
-                            d="M13 6l6 6-6 6"
-                            stroke="white"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        />
-
-                    </svg>
-
-                </div>
-
-
-                <div class="login-text">
-
-                    <span class="login-label">
-                        Masuk
+                    <span class="open-login-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none">
+                            <path d="M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                            <path d="M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
                     </span>
-
-                    <span class="login-description">
-                        Masuk ke sistem
+                    <span class="open-login-text">
+                        <span class="open-login-label">Masuk</span>
+                        <span class="open-login-description">Masuk ke sistem</span>
                     </span>
+                </button>
+            </div>
 
-                </div>
+            <!-- Form muncul dengan animasi di panel yang sama. -->
+            <div
+                id="loginReveal"
+                class="login-reveal{{ ($errors->any() || session()->has('status')) ? ' is-open' : '' }}"
+                aria-hidden="{{ ($errors->any() || session()->has('status')) ? 'false' : 'true' }}"
+                @if (!$errors->any() && !session()->has('status')) inert @endif
+            >
+                <button id="closeLoginButton" class="login-back-button" type="button">
+                    <span aria-hidden="true">←</span> Kembali
+                </button>
 
-            </a>
+                <!-- Status dan validasi ditampilkan tanpa berpindah ke login.blade.php. -->
+                @if (session('status'))
+                    <div class="login-status" role="status">
+                        {{ session('status') }}
+                    </div>
+                @endif
 
+                @if ($errors->any())
+                    <div class="login-alert" role="alert">
+                        <strong>Login belum berhasil.</strong>
+                        <ul style="margin: 5px 0 0 16px; padding: 0;">
+                            @foreach ($errors->all() as $error)
+                                <li>{{ $error }}</li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
+
+                <form action="{{ route('login') }}" method="POST" class="login-form">
+                    @csrf
+
+                    <div class="form-field">
+                        <label for="welcome-email">Email</label>
+                        <input
+                            id="welcome-email"
+                            type="email"
+                            name="email"
+                            value="{{ old('email') }}"
+                            placeholder="nama@contoh.com"
+                            autocomplete="username"
+                            required
+                        >
+                        @error('email')
+                            <p class="form-field-error">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div class="form-field">
+                        <label for="welcome-password">Password</label>
+                        <input
+                            id="welcome-password"
+                            type="password"
+                            name="password"
+                            placeholder="Masukkan password"
+                            autocomplete="current-password"
+                            required
+                        >
+                        @error('password')
+                            <p class="form-field-error">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div class="login-options">
+                        <label class="remember-option" for="welcome-remember">
+                            <input
+                                id="welcome-remember"
+                                type="checkbox"
+                                name="remember"
+                                value="1"
+                                {{ old('remember') ? 'checked' : '' }}
+                            >
+                            <span>Ingat saya</span>
+                        </label>
+
+                        <a class="forgot-link" href="{{ route('password.request') }}">
+                            Lupa password?
+                        </a>
+                    </div>
+
+                    <button type="submit" class="login-button">
+                        <span class="login-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path d="M5 12h14" stroke="white" stroke-width="2" stroke-linecap="round" />
+                                <path d="M13 6l6 6-6 6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                        </span>
+                        <span class="login-text">
+                            <span class="login-label">Masuk</span>
+                            <span class="login-description">Masuk ke sistem</span>
+                        </span>
+                    </button>
+                </form>
+            </div>
 
             <!-- SYSTEM INFO -->
 
@@ -980,6 +1273,48 @@
     </section>
 
 </div>
+
+<script>
+    (() => {
+        const prompt = document.getElementById('loginPrompt');
+        const openButton = document.getElementById('openLoginButton');
+        const reveal = document.getElementById('loginReveal');
+        const closeButton = document.getElementById('closeLoginButton');
+        const emailInput = document.getElementById('welcome-email');
+
+        if (!prompt || !openButton || !reveal || !closeButton) return;
+
+        const setLoginOpen = (isOpen, focusField = false) => {
+            prompt.classList.toggle('is-hidden', isOpen);
+            reveal.classList.toggle('is-open', isOpen);
+            reveal.setAttribute('aria-hidden', String(!isOpen));
+            openButton.setAttribute('aria-expanded', String(isOpen));
+
+            if (isOpen) {
+                reveal.removeAttribute('inert');
+                if (focusField && emailInput) {
+                    window.setTimeout(() => {
+                        emailInput.focus({ preventScroll: true });
+                    }, 220);
+                }
+            } else {
+                reveal.setAttribute('inert', '');
+                openButton.focus({ preventScroll: true });
+            }
+        };
+
+        openButton.addEventListener('click', () => setLoginOpen(true, true));
+        closeButton.addEventListener('click', () => setLoginOpen(false));
+
+        // Jika login gagal, buka form kembali setelah Laravel redirect ke welcome.
+        const shouldOpenInitially = @json($errors->any() || session()->has('status'));
+        if (shouldOpenInitially) {
+            setLoginOpen(true, false);
+        } else {
+            reveal.setAttribute('inert', '');
+        }
+    })();
+</script>
 
 </body>
 </html>
