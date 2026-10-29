@@ -1066,7 +1066,7 @@
                         </td>
 
                         {{-- TIKET ESKALASI --}}
-                        <td class="df-ticket-cell" title="{{ $r['tiket_eskalasi'] ?: '-' }}">
+                        <td class="df-ticket-cell">
                             {{ $r['tiket_eskalasi'] ?: '-' }}
                         </td>
 
@@ -1546,7 +1546,7 @@ body.dfLoadingLock *{
 
 .df-table{
     width:100%;
-    min-width:960px;
+    min-width:1280px;
     border-collapse:separate;
     border-spacing:0;
     table-layout:fixed;
@@ -2137,25 +2137,23 @@ body.dfLoadingLock *{
 
 /* Proporsi tepat 100%. */
 .df-wrap .df-table th:nth-child(1),
-.df-wrap .df-table td:nth-child(1){width:5% !important;}
+.df-wrap .df-table td:nth-child(1){width:6% !important;}
 .df-wrap .df-table th:nth-child(2),
-.df-wrap .df-table td:nth-child(2){width:13% !important;}
+.df-wrap .df-table td:nth-child(2){width:16% !important;}
 .df-wrap .df-table th:nth-child(3),
-.df-wrap .df-table td:nth-child(3){width:20% !important;}
+.df-wrap .df-table td:nth-child(3){width:23% !important;}
 .df-wrap .df-table th:nth-child(4),
-.df-wrap .df-table td:nth-child(4){width:6% !important;}
+.df-wrap .df-table td:nth-child(4){width:7% !important;}
 .df-wrap .df-table th:nth-child(5),
-.df-wrap .df-table td:nth-child(5){width:10% !important;}
+.df-wrap .df-table td:nth-child(5){width:11% !important;}
 .df-wrap .df-table th:nth-child(6),
-.df-wrap .df-table td:nth-child(6){width:7% !important;}
+.df-wrap .df-table td:nth-child(6){width:8% !important;}
 .df-wrap .df-table th:nth-child(7),
-.df-wrap .df-table td:nth-child(7){width:10% !important;}
+.df-wrap .df-table td:nth-child(7){width:14% !important;}
 .df-wrap .df-table th:nth-child(8),
-.df-wrap .df-table td:nth-child(8){width:8% !important;}
+.df-wrap .df-table td:nth-child(8){width:10% !important;}
 .df-wrap .df-table th:nth-child(9),
-.df-wrap .df-table td:nth-child(9){width:12% !important;}
-.df-wrap .df-table th:nth-child(10),
-.df-wrap .df-table td:nth-child(10){width:9% !important;}
+.df-wrap .df-table td:nth-child(9){width:5% !important;}
 
 .df-wrap .df-table thead th{
     height:38px !important;
@@ -2368,14 +2366,6 @@ body.dfLoadingLock *::after {
     pointer-events: none !important;
 }
 
-
-/* Kolom Tiket Eskalasi mengikuti lebar khusus, tidak lagi terpotong menjadi 'Tik…'. */
-.df-wrap .df-ticket-cell{
-    white-space:nowrap !important;
-    overflow:hidden !important;
-    text-overflow:ellipsis !important;
-    font-size:11px !important;
-}
 </style>
 
 

@@ -14,6 +14,8 @@
         Telkom Fallout System — Dashboard
     </title>
 
+    <link rel="icon" type="image/png" href="{{ asset('images/image.png') }}?v=20261029">
+
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
 

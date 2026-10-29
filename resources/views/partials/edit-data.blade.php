@@ -419,7 +419,7 @@
 
             <td>
 
-              {{ $r['ket'] }}
+              {{ $r['ket'] ?: '-' }}
 
             </td>
 
@@ -1253,16 +1253,15 @@
     font-size:12px;
   }
 
-  /* 9 kolom; lebar total 100% agar Tiket Eskalasi dan Aksi sama-sama terlihat. */
+  /* 8 kolom; Deskripsi tidak ditampilkan di tabel Edit Data. */
   .ed-table thead th:nth-child(1){width:4%}   /* No */
-  .ed-table thead th:nth-child(2){width:18%}  /* No/Order ID + tombol preview */
-  .ed-table thead th:nth-child(3){width:7%}   /* STO */
-  .ed-table thead th:nth-child(4){width:12%}  /* Tanggal */
-  .ed-table thead th:nth-child(5){width:9%}   /* PIC */
-  .ed-table thead th:nth-child(6){width:12%}  /* Status */
-  .ed-table thead th:nth-child(7){width:14%}  /* Tiket Eskalasi */
-  .ed-table thead th:nth-child(8){width:10%}  /* KET */
-  .ed-table thead th:nth-child(9){width:14%}  /* Aksi */
+  .ed-table thead th:nth-child(2){width:22%}  /* No/Order ID + tombol preview */
+  .ed-table thead th:nth-child(3){width:8%}   /* STO */
+  .ed-table thead th:nth-child(4){width:14%}  /* Tanggal */
+  .ed-table thead th:nth-child(5){width:11%}  /* PIC */
+  .ed-table thead th:nth-child(6){width:14%}  /* Status */
+  .ed-table thead th:nth-child(7){width:15%}  /* KET */
+  .ed-table thead th:nth-child(8){width:12%}  /* Aksi */
 
   .ed-table thead th{
 

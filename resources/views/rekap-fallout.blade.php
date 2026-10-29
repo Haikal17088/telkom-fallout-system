@@ -2010,45 +2010,6 @@ body{background:#F5F6F8;}
 .table-wrap table{border-radius:12px;}
 @media(max-width:900px){.page-head{align-items:stretch;}.filter-actions{width:100%;}.filter-reset{flex:1;}.page-head-actions{width:100%;}.btn-download,.btn-refresh{flex:1;}}
 
-
-/* Kolom Tiket Eskalasi berada setelah Status, sebelum Detail; nilai panjang tidak merusak layout. */
-.table-wrap > table .rf-ticket-cell{
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-    max-width:180px;
-}
-
-/* Lebar tabel publik dibuat eksplisit agar kolom tiket stabil dan tidak terdorong keluar. */
-#viewTabel .table-wrap > table{
-    width:100%;
-    min-width:1180px;
-    table-layout:fixed;
-}
-#viewTabel .table-wrap > table th:nth-child(1),
-#viewTabel .table-wrap > table td:nth-child(1){width:4%;}
-#viewTabel .table-wrap > table th:nth-child(2),
-#viewTabel .table-wrap > table td:nth-child(2){width:13%;}
-#viewTabel .table-wrap > table th:nth-child(3),
-#viewTabel .table-wrap > table td:nth-child(3){width:8%;}
-#viewTabel .table-wrap > table th:nth-child(4),
-#viewTabel .table-wrap > table td:nth-child(4){width:21%;}
-#viewTabel .table-wrap > table th:nth-child(5),
-#viewTabel .table-wrap > table td:nth-child(5){width:6%;}
-#viewTabel .table-wrap > table th:nth-child(6),
-#viewTabel .table-wrap > table td:nth-child(6){width:10%;}
-#viewTabel .table-wrap > table th:nth-child(7),
-#viewTabel .table-wrap > table td:nth-child(7){width:8%;}
-#viewTabel .table-wrap > table th:nth-child(8),
-#viewTabel .table-wrap > table td:nth-child(8){width:10%;}
-#viewTabel .table-wrap > table th:nth-child(9),
-#viewTabel .table-wrap > table td:nth-child(9){width:8%;}
-#viewTabel .table-wrap > table th:nth-child(10),
-#viewTabel .table-wrap > table td:nth-child(10){width:8%;}
-#viewTabel .table-wrap > table th:nth-child(11),
-#viewTabel .table-wrap > table td:nth-child(11){width:4%;}
-#viewTabel .table-wrap > table th,
-#viewTabel .table-wrap > table td{overflow:hidden;text-overflow:ellipsis;}
 </style>
 
 
@@ -2773,11 +2734,11 @@ body{background:#F5F6F8;}
                     </th>
 
                     <th>
-                        TIKET ESKALASI
+                        DETAIL
                     </th>
 
                     <th>
-                        DETAIL
+                        TIKET ESKALASI
                     </th>
 
                 </tr>
@@ -3058,10 +3019,6 @@ body{background:#F5F6F8;}
                         </td>
 
 
-                        <td class="rf-ticket-cell" title="{{ trim((string) ($row->tiket_eskalasi ?? '')) ?: '-' }}">
-                            {{ trim((string) ($row->tiket_eskalasi ?? '')) ?: '-' }}
-                        </td>
-
                         <td style="text-align:center;">
 
                             <button
@@ -3085,6 +3042,10 @@ body{background:#F5F6F8;}
                                 </svg>
                             </button>
 
+                        </td>
+
+                        <td class="rf-ticket-cell" title="{{ $row->tiket_eskalasi ?? '-' }}">
+                            {{ $row->tiket_eskalasi ?? '-' }}
                         </td>
 
                     </tr>
