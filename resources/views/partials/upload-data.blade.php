@@ -695,7 +695,7 @@
                     </div>
 
                     <div class="ud-preview-subtitle">
-                        Menampilkan seluruh data yang akan diupload.
+                        Preview menampilkan maksimal 100 baris pertama. Seluruh data tetap akan diupload.
                     </div>
 
                 </div>
@@ -1647,7 +1647,10 @@
 
     .ud-table-wrap{
         width:100%;
+        max-height:560px;
         overflow-x:auto;
+        overflow-y:auto;
+        overscroll-behavior:contain;
         border-top:1px solid #EEE7E6;
     }
 
@@ -1663,6 +1666,9 @@
     }
 
     .ud-table th{
+        position:sticky;
+        top:0;
+        z-index:2;
         padding:11px 12px;
         text-align:left;
         color:#707075;
@@ -1962,7 +1968,7 @@
             document.documentElement.classList.remove(lockClass);
             document.body.classList.remove(lockClass);
             pageLoading.classList.add('is-hidden');
-        }, 1000);
+        }, 180);
     })();
 
     /* =========================================================
@@ -1998,6 +2004,8 @@
     const previewBody = document.getElementById('udPreviewBody');
 
     const previewTotal = document.getElementById('udPreviewTotal');
+
+    const previewSubtitle = document.querySelector('.ud-preview-subtitle');
 
     const totalDataEl = document.getElementById('udTotalData');
 
@@ -2740,12 +2748,22 @@
         });
 
 
-        const previewRows = validRows;
+        const PREVIEW_LIMIT = 100;
+
+        // Jangan render ribuan baris sekaligus ke DOM.
+        // File asli tetap dikirim utuh ke server saat tombol Upload ditekan.
+        const previewRows = validRows.slice(0, PREVIEW_LIMIT);
 
 
         previewTotal.textContent =
             validRows.length.toLocaleString('id-ID') +
             ' Total Data';
+
+        if (previewSubtitle) {
+            previewSubtitle.textContent = validRows.length > PREVIEW_LIMIT
+                ? `Menampilkan ${PREVIEW_LIMIT.toLocaleString('id-ID')} baris pertama dari ${validRows.length.toLocaleString('id-ID')} data. Seluruh data tetap akan diupload.`
+                : `Menampilkan seluruh ${validRows.length.toLocaleString('id-ID')} data.`;
+        }
 
 
         if (previewRows.length === 0) {
@@ -2936,7 +2954,8 @@
                         data,
                         {
                             type:'array',
-                            cellDates:true
+                            cellDates:true,
+                            dense:true
                         }
                     );
 
