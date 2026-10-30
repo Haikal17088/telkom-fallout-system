@@ -1198,7 +1198,7 @@
                             type="email"
                             name="email"
                             value="{{ old('email') }}"
-                            placeholder="nama@contoh.com"
+                            placeholder="masukan email"
                             autocomplete="username"
                             required
                         >
