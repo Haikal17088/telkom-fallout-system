@@ -164,35 +164,16 @@
 
   */
 
-  $latestDates = $dbRows
-
+  $allDateCounts = $dbRows
       ->filter(fn ($row) => !empty($row->tanggal))
+      ->groupBy(function ($row) {
+          return \Carbon\Carbon::parse($row->tanggal)->format('Y-m-d');
+      })
+      ->map(fn ($group) => $group->count())
+      ->sortKeysDesc();
 
-      ->groupBy(
-
-          function ($row) {
-
-              return \Carbon\Carbon::parse(
-
-                  $row->tanggal
-
-              )->format('Y-m-d');
-
-          }
-
-      )
-
-      ->map(
-
-          fn ($group) =>
-
-              $group->count()
-
-      )
-
-      ->sortKeysDesc()
-
-      ->take(10);
+  // Ringkasan di layar tetap menampilkan 10 tanggal terbaru.
+  $latestDates = $allDateCounts->take(10);
 
   /*
 
@@ -1146,7 +1127,7 @@
         @if($adhHistoryReady)
           <form class="adh-history-delete-form" method="POST"
                 action="{{ route('arsip-hapus.riwayat.destroy', ['witel' => $witelSlug]) }}"
-                onsubmit="confirmDeleteHistory(this); return false;">
+                onsubmit="return confirmDeleteHistory(this);">
             @csrf
             @method('DELETE')
             <button type="submit" class="adh-history-delete-btn" {{ $adhHistoryTotal <= 0 ? 'disabled' : '' }}>
@@ -2563,7 +2544,7 @@ html.adh-history-modal-lock,body.adh-history-modal-lock{overflow:hidden!importan
 
         }, 320);
 
-      }, 1000);
+      }, 180);
 
     }
 
@@ -2603,7 +2584,7 @@ html.adh-history-modal-lock,body.adh-history-modal-lock{overflow:hidden!importan
 
     const dateCounts = @json(
 
-      $latestDates->mapWithKeys(
+      $allDateCounts->mapWithKeys(
 
         fn($count, $date) => [
 
@@ -2731,100 +2712,42 @@ html.adh-history-modal-lock,body.adh-history-modal-lock{overflow:hidden!importan
 
       function(){
 
-        const input =
+        const input = document.getElementById('ahTanggal');
+        const countEl = document.getElementById('ahTanggalDeleteCount');
+        const textEl = document.getElementById('ahTanggalDeleteText');
+        const button = document.getElementById('ahDeleteTanggalBtn');
 
-          document.getElementById(
+        if (!input || !countEl || !textEl || !button) return;
 
-            'ahTanggal'
-
-          );
-
-        const countEl =
-
-          document.getElementById(
-
-            'ahTanggalDeleteCount'
-
-          );
-
-        const textEl =
-
-          document.getElementById(
-
-            'ahTanggalDeleteText'
-
-          );
-
-        const button =
-
-          document.getElementById(
-
-            'ahDeleteTanggalBtn'
-
-          );
-
-        if (!input){
-
-          return;
-
-        }
-
-        const date =
-
-          input.value;
+        const date = input.value;
 
         if (!date){
+          countEl.textContent = 'Pilih tanggal terlebih dahulu';
+          textEl.textContent = 'Belum ada tanggal yang dipilih';
+          button.disabled = true;
 
-          countEl.textContent =
-
-            'Pilih tanggal terlebih dahulu';
-
-          textEl.textContent =
-
-            'Belum ada tanggal yang dipilih';
-
-          button.disabled =
-
-            true;
-
+          const cleanUrl = new URL(window.location.href);
+          cleanUrl.searchParams.delete('tanggal');
+          window.history.replaceState(window.history.state, '', cleanUrl.href);
           return;
-
         }
 
-        /*
+        const count = Number(dateCounts[date] || 0);
+        const [year, month, day] = date.split('-').map(Number);
+        const formattedDate = new Intl.DateTimeFormat('id-ID', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric'
+        }).format(new Date(year, month - 1, day));
 
-        |--------------------------------------------------------------------------
+        countEl.textContent = count.toLocaleString('id-ID') + ' data akan dihapus';
+        textEl.textContent = 'Seluruh data pada ' + formattedDate;
+        button.disabled = count <= 0;
 
-        | Untuk tanggal yang tidak masuk 10 tanggal terbaru,
-
-        | nilai count belum tersedia di JS. Agar tombol tetap benar,
-
-        | arahkan browser ke query tanggal dan gunakan nilai dari server.
-
-        |--------------------------------------------------------------------------
-
-        */
-
-        const params =
-
-          new URLSearchParams(
-
-            window.location.search
-
-          );
-
-        params.set(
-
-          'tanggal',
-
-          date
-
-        );
-
-        window.location.search =
-
-          params.toString();
-
+        // Simpan pilihan tanggal di URL tanpa meminta ulang halaman ke server.
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set('tanggal', date);
+        window.history.replaceState(window.history.state, '', nextUrl.href);
       };
 
     /*
@@ -2979,6 +2902,39 @@ html.adh-history-modal-lock,body.adh-history-modal-lock{overflow:hidden!importan
 
     }
 
+    // Handler onsubmit harus mengembalikan false secara sinkron.
+    // Browser tidak menunggu Promise dari handler async.
+    function ahRunConfirmedForm(form, confirmationTask){
+      if (!form || form.dataset.ahConfirmPending === '1'){
+        return false;
+      }
+
+      form.dataset.ahConfirmPending = '1';
+
+      (async function(){
+        try{
+          const confirmed = await confirmationTask();
+          if (!confirmed) return;
+
+          // Lewati event submit awal; kirim hanya setelah tombol konfirmasi ditekan.
+          HTMLFormElement.prototype.submit.call(form);
+        } catch(error){
+          console.error('Konfirmasi penghapusan gagal:', error);
+          await ahShowUiAlert({
+            type: 'error',
+            title: 'Konfirmasi Gagal',
+            message: 'Permintaan penghapusan tidak dapat diproses. Silakan coba lagi.',
+            confirmText: 'OK'
+          });
+        } finally {
+          form.dataset.ahConfirmPending = '0';
+        }
+      })();
+
+      return false;
+    }
+
+
     ahUiAlertConfirm.addEventListener('click', () => ahCloseUiAlert(true));
 
     ahUiAlertCancel.addEventListener('click', () => ahCloseUiAlert(false));
@@ -3013,252 +2969,87 @@ html.adh-history-modal-lock,body.adh-history-modal-lock{overflow:hidden!importan
 
     */
 
-    window.confirmDeleteTanggal =
-
-      async function(form){
-
-        const input =
-
-          document.getElementById(
-
-            'ahTanggal'
-
-          );
-
+    window.confirmDeleteTanggal = function(form){
+      return ahRunConfirmedForm(form, async function(){
+        const input = document.getElementById('ahTanggal');
         if (!input || !input.value){
-
           await ahShowUiAlert({
-
-            type:'error',
-
-            title:'Tanggal Belum Dipilih',
-
-            message:'Pilih tanggal terlebih dahulu.',
-
-            confirmText:'OK'
-
+            type: 'error',
+            title: 'Tanggal Belum Dipilih',
+            message: 'Pilih tanggal terlebih dahulu.',
+            confirmText: 'OK'
           });
-
           return false;
-
         }
 
-        const countText =
-
-          document.getElementById(
-
-            'ahTanggalDeleteCount'
-
-          )?.textContent
-
-          || '';
-
-        if (
-
-          countText.includes('0 data')
-
-          ||
-
-          countText.includes('Pilih tanggal terlebih dahulu')
-
-        ){
-
+        const count = Number(dateCounts[input.value] || 0);
+        if (count <= 0){
           await ahShowUiAlert({
-
-            type:'error',
-
-            title:'Data Tidak Ditemukan',
-
-            message:`Tidak ada data pada tanggal <strong>${ahEscapeUiHtml(input.value)}</strong>.`,
-
-            confirmText:'OK'
-
+            type: 'error',
+            title: 'Data Tidak Ditemukan',
+            message: `Tidak ada data pada tanggal <strong>${ahEscapeUiHtml(input.value)}</strong>.`,
+            confirmText: 'OK'
           });
-
           return false;
-
         }
 
-        const confirmed =
+        return await ahShowUiConfirm({
+          title: 'Hapus Data?',
+          message: `Apakah kamu yakin ingin menghapus <strong>${count.toLocaleString('id-ID')} data</strong> pada tanggal <strong>${ahEscapeUiHtml(input.value)}</strong>? Data yang sudah dihapus tidak dapat dikembalikan.`,
+          confirmText: 'Hapus',
+          cancelText: 'Batal'
+        });
+      });
+    };
 
-          await ahShowUiConfirm({
-
-            title:'Hapus Data?',
-
-            message:`Apakah kamu yakin ingin menghapus seluruh data pada tanggal <strong>${ahEscapeUiHtml(input.value)}</strong>? Data yang sudah dihapus tidak dapat dikembalikan.`,
-
-            confirmText:'Hapus',
-
-            cancelText:'Batal'
-
-          });
-
-        if (!confirmed){
-
-          return false;
-
-        }
-
-        HTMLFormElement.prototype.submit.call(form);
-
-        return false;
-
-      };
-
-    /*
-
-    |--------------------------------------------------------------------------
-
-    | KONFIRMASI HAPUS TAHUN
-
-    |--------------------------------------------------------------------------
-
-    */
-
-    /*
-
-    |--------------------------------------------------------------------------
-
-    | KONFIRMASI HAPUS TAHUN
-
-    |--------------------------------------------------------------------------
-
-    */
-
-    window.confirmDeleteYear =
-
-      async function(form){
-
-        const select =
-
-          document.getElementById(
-
-            'ahTahun'
-
-          );
-
-        const year =
-
-          select?.value
-
-          || '';
-
-        const count =
-
-          Number(
-
-            yearCounts[year]
-
-            || 0
-
-          );
+    window.confirmDeleteYear = function(form){
+      return ahRunConfirmedForm(form, async function(){
+        const select = document.getElementById('ahTahun');
+        const year = select?.value || '';
+        const count = Number(yearCounts[year] || 0);
 
         if (count <= 0){
-
           await ahShowUiAlert({
-
-            type:'error',
-
-            title:'Data Tidak Ditemukan',
-
-            message:`Tidak ada data pada tahun <strong>${ahEscapeUiHtml(year)}</strong>.`,
-
-            confirmText:'OK'
-
+            type: 'error',
+            title: 'Data Tidak Ditemukan',
+            message: `Tidak ada data pada tahun <strong>${ahEscapeUiHtml(year)}</strong>.`,
+            confirmText: 'OK'
           });
-
           return false;
-
         }
 
-        const confirmed =
+        return await ahShowUiConfirm({
+          title: 'Hapus Data?',
+          message: `Apakah kamu yakin ingin menghapus <strong>${count.toLocaleString('id-ID')} data</strong> pada tahun <strong>${ahEscapeUiHtml(year)}</strong> untuk <strong>{{ addslashes($witel) }}</strong>? Data yang sudah dihapus tidak dapat dikembalikan.`,
+          confirmText: 'Hapus',
+          cancelText: 'Batal'
+        });
+      });
+    };
 
-          await ahShowUiConfirm({
-
-            title:'Hapus Data?',
-
-            message:`Apakah kamu yakin ingin menghapus <strong>${count.toLocaleString('id-ID')} data</strong> pada tahun <strong>${ahEscapeUiHtml(year)}</strong> untuk <strong>{{ addslashes($witel) }}</strong>? Data yang sudah dihapus tidak dapat dikembalikan.`,
-
-            confirmText:'Hapus',
-
-            cancelText:'Batal'
-
-          });
-
-        if (!confirmed){
-
-          return false;
-
-        }
-
-        HTMLFormElement.prototype.submit.call(form);
-
-        return false;
-
-      };
-
-    /*
-
-    |--------------------------------------------------------------------------
-
-    | KONFIRMASI HAPUS RIWAYAT
-
-    |--------------------------------------------------------------------------
-
-    | Menggunakan modal konfirmasi yang sama dengan Hapus Per Tahun/Tanggal.
-    | Hanya submit form setelah pengguna memilih Hapus.
-
-    */
-
-    window.confirmDeleteHistory =
-
-      async function(form){
-
+    window.confirmDeleteHistory = function(form){
+      return ahRunConfirmedForm(form, async function(){
         const count = Number(@json($adhHistoryTotal) || 0);
-
         const witelName = @json($witel);
 
         if (count <= 0){
-
           await ahShowUiAlert({
-
-            type:'error',
-
-            title:'Riwayat Kosong',
-
-            message:'Tidak ada riwayat penghapusan yang bisa dihapus untuk Witel ini.',
-
-            confirmText:'OK'
-
+            type: 'error',
+            title: 'Riwayat Kosong',
+            message: 'Tidak ada riwayat penghapusan yang bisa dihapus untuk Witel ini.',
+            confirmText: 'OK'
           });
-
-          return;
-
+          return false;
         }
 
-        const confirmed =
-
-          await ahShowUiConfirm({
-
-            title:'Hapus Riwayat?',
-
-            message:`Apakah kamu yakin ingin menghapus seluruh <strong>${count.toLocaleString('id-ID')} riwayat penghapusan</strong> untuk <strong>${ahEscapeUiHtml(witelName)}</strong>? Data Fallout asli tidak akan dihapus. Tindakan ini tidak dapat dibatalkan.`,
-
-            confirmText:'Hapus Riwayat',
-
-            cancelText:'Batal'
-
-          });
-
-        if (!confirmed){
-
-          return;
-
-        }
-
-        HTMLFormElement.prototype.submit.call(form);
-
-      };
+        return await ahShowUiConfirm({
+          title: 'Hapus Riwayat?',
+          message: `Apakah kamu yakin ingin menghapus seluruh <strong>${count.toLocaleString('id-ID')} riwayat penghapusan</strong> untuk <strong>${ahEscapeUiHtml(witelName)}</strong>? Data Fallout asli tidak akan dihapus. Tindakan ini tidak dapat dibatalkan.`,
+          confirmText: 'Hapus Riwayat',
+          cancelText: 'Batal'
+        });
+      });
+    };
 
     /*
 

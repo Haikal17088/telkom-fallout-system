@@ -152,13 +152,9 @@
 
                     $weekEnd = $weekStart->copy()->endOfWeek(\Carbon\Carbon::SUNDAY);
 
-                    $exportQuery->whereBetween('tanggal', [
-
-                        $weekStart->toDateString(),
-
-                        $weekEnd->toDateString(),
-
-                    ]);
+                    $exportQuery
+                        ->whereDate('tanggal', '>=', $weekStart->toDateString())
+                        ->whereDate('tanggal', '<=', $weekEnd->toDateString());
 
                 } catch (\Throwable $e) {
 
@@ -168,13 +164,9 @@
 
                     $weekEnd = $latestDate->copy()->endOfWeek(\Carbon\Carbon::SUNDAY);
 
-                    $exportQuery->whereBetween('tanggal', [
-
-                        $weekStart->toDateString(),
-
-                        $weekEnd->toDateString(),
-
-                    ]);
+                    $exportQuery
+                        ->whereDate('tanggal', '>=', $weekStart->toDateString())
+                        ->whereDate('tanggal', '<=', $weekEnd->toDateString());
 
                 }
 
@@ -186,13 +178,9 @@
 
                 $weekEnd = $latestDate->copy()->endOfWeek(\Carbon\Carbon::SUNDAY);
 
-                $exportQuery->whereBetween('tanggal', [
-
-                    $weekStart->toDateString(),
-
-                    $weekEnd->toDateString(),
-
-                ]);
+                $exportQuery
+                        ->whereDate('tanggal', '>=', $weekStart->toDateString())
+                        ->whereDate('tanggal', '<=', $weekEnd->toDateString());
 
             }
 
@@ -232,13 +220,9 @@
 
                 }
 
-                $exportQuery->whereBetween('tanggal', [
-
-                    $from->toDateString(),
-
-                    $until->toDateString(),
-
-                ]);
+                $exportQuery
+                    ->whereDate('tanggal', '>=', $from->toDateString())
+                    ->whereDate('tanggal', '<=', $until->toDateString());
 
             } elseif ($validDari) {
 
@@ -646,13 +630,13 @@
 
                 </svg>
 
-                Siap Export: <strong>{{ $periodLabel }}</strong>
+                Siap Export: <strong id="exPeriodLabel">{{ $periodLabel }}</strong>
 
             </span>
 
             <span>
 
-                <strong>{{ $exCount }}</strong> baris data ditemukan
+                <strong id="exVisibleCount">{{ $exCount }}</strong> baris data ditemukan
 
             </span>
 
@@ -706,13 +690,13 @@
 
             <div class="ex-preview-head-left">
 
-                <h3>Preview Semua Data Witel</h3>
+                <h3 id="exPreviewTitle">Preview Data Export</h3>
 
                 <span>
 
-                    Seluruh data Witel:
+                    Data sesuai filter:
 
-                    <strong>{{ $exPreviewCount }}</strong>
+                    <strong id="exPreviewCount">{{ $exCount }}</strong>
 
                 </span>
 
@@ -808,7 +792,7 @@
 
                         @foreach ($exPreview as $r)
 
-                            <tr>
+                            <tr data-export-date="{{ $r->tanggal ? \Carbon\Carbon::parse($r->tanggal)->format('Y-m-d') : '' }}">
 
                                 <td class="ex-no-cell">
 
@@ -1039,6 +1023,10 @@
                             </tr>
 
                         @endforeach
+
+                        <tr id="exNoMatchRow" style="display:none;">
+                            <td colspan="9" class="ex-empty">Tidak ada data yang cocok dengan filter ini.</td>
+                        </tr>
 
                     </tbody>
 
@@ -1932,241 +1920,177 @@
 
     })();
 
-    let exCurrentPeriod = @json($activePeriod);
+    (function () {
+        'use strict';
 
-    function exSwitchTab(name, btn) {
+        let exCurrentPeriod = @json($activePeriod);
+        const exAllowedPeriods = ['harian', 'mingguan', 'bulanan', 'tahunan', 'custom'];
 
-        exCurrentPeriod = name;
+        function exFieldValue(id) {
+            return document.getElementById(id)?.value || '';
+        }
 
-        document.querySelectorAll('.ex-tab-btn').forEach(b => {
+        function exSyncDownloadFields() {
+            const values = {
+                exDownloadPeriode: exCurrentPeriod,
+                exDownloadTanggal: exFieldValue('exTanggal'),
+                exDownloadMinggu: exFieldValue('exMinggu'),
+                exDownloadBulan: exFieldValue('exBulan'),
+                exDownloadTahun: exCurrentPeriod === 'tahunan'
+                    ? exFieldValue('exTahunTahunan')
+                    : exFieldValue('exTahunBulanan'),
+                exDownloadDari: exFieldValue('exDari'),
+                exDownloadSampai: exFieldValue('exSampai')
+            };
 
-            b.classList.remove('active');
+            Object.entries(values).forEach(([id, value]) => {
+                const input = document.getElementById(id);
+                if (input) input.value = value;
+            });
+        }
 
-        });
+        function exGetIsoWeek(dateText) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) return '';
+            const [year, month, day] = dateText.split('-').map(Number);
+            const date = new Date(Date.UTC(year, month - 1, day));
+            if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return '';
+            const weekday = date.getUTCDay() || 7;
+            date.setUTCDate(date.getUTCDate() + 4 - weekday);
+            const isoYear = date.getUTCFullYear();
+            const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+            const week = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+            return `${isoYear}-W${String(week).padStart(2, '0')}`;
+        }
 
-        btn.classList.add('active');
+        function exFormatDate(dateText) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) return dateText || '-';
+            const [year, month, day] = dateText.split('-').map(Number);
+            return new Intl.DateTimeFormat('id-ID', {
+                day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC'
+            }).format(new Date(Date.UTC(year, month - 1, day)));
+        }
 
-        ['harian', 'mingguan', 'bulanan', 'tahunan', 'custom'].forEach(key => {
-
-            const el = document.getElementById('ex-filter-' + key);
-
-            if (el) {
-
-                el.style.display = (key === name) ? 'flex' : 'none';
-
+        function exCurrentLabel() {
+            if (exCurrentPeriod === 'harian') return exFormatDate(exFieldValue('exTanggal'));
+            if (exCurrentPeriod === 'mingguan') return `Minggu ${exFieldValue('exMinggu') || '-'}`;
+            if (exCurrentPeriod === 'bulanan') {
+                const monthSelect = document.getElementById('exBulan');
+                const month = monthSelect?.selectedOptions?.[0]?.textContent?.trim() || '-';
+                return `${month} ${exFieldValue('exTahunBulanan') || ''}`.trim();
             }
+            if (exCurrentPeriod === 'tahunan') return `Tahun ${exFieldValue('exTahunTahunan') || '-'}`;
 
-        });
-
-        exSyncDownloadFields();
-
-    }
-
-    function exSyncDownloadFields() {
-
-        const periodeEl = document.getElementById('exDownloadPeriode');
-
-        const tanggalEl = document.getElementById('exDownloadTanggal');
-
-        const mingguEl = document.getElementById('exDownloadMinggu');
-
-        const bulanEl = document.getElementById('exDownloadBulan');
-
-        const tahunEl = document.getElementById('exDownloadTahun');
-
-        const dariEl = document.getElementById('exDownloadDari');
-
-        const sampaiEl = document.getElementById('exDownloadSampai');
-
-        if (periodeEl) {
-
-            periodeEl.value = exCurrentPeriod;
-
+            let from = exFieldValue('exDari');
+            let until = exFieldValue('exSampai');
+            if (from && until && from > until) [from, until] = [until, from];
+            if (!from && !until) return 'Pilih rentang tanggal';
+            return `${from ? exFormatDate(from) : 'Awal'} — ${until ? exFormatDate(until) : 'Terakhir'}`;
         }
 
-        if (tanggalEl) {
+        function exRowMatches(row) {
+            const date = row.dataset.exportDate || '';
+            if (!date) return false;
 
-            tanggalEl.value = document.getElementById('exTanggal')?.value || '';
-
-        }
-
-        if (mingguEl) {
-
-            mingguEl.value = document.getElementById('exMinggu')?.value || '';
-
-        }
-
-        if (bulanEl) {
-
-            bulanEl.value = document.getElementById('exBulan')?.value || '';
-
-        }
-
-        if (tahunEl) {
-
-            tahunEl.value =
-
-                exCurrentPeriod === 'tahunan'
-
-                    ? (document.getElementById('exTahunTahunan')?.value || '')
-
-                    : (document.getElementById('exTahunBulanan')?.value || '');
-
-        }
-
-        if (dariEl) {
-
-            dariEl.value = document.getElementById('exDari')?.value || '';
-
-        }
-
-        if (sampaiEl) {
-
-            sampaiEl.value = document.getElementById('exSampai')?.value || '';
-
-        }
-
-    }
-
-    function exReloadWithCurrentFilter() {
-
-        exSyncDownloadFields();
-
-        const url = new URL(window.location.href);
-
-        [
-
-            'periode',
-
-            'tanggal',
-
-            'minggu',
-
-            'bulan',
-
-            'tahun',
-
-            'dari',
-
-            'sampai'
-
-        ].forEach(key => {
-
-            url.searchParams.delete(key);
-
-        });
-
-        url.searchParams.set(
-
-            'periode',
-
-            exCurrentPeriod
-
-        );
-
-        const fieldMap = {
-
-            harian: {
-
-                tanggal: document.getElementById('exTanggal')?.value || ''
-
-            },
-
-            mingguan: {
-
-                minggu: document.getElementById('exMinggu')?.value || ''
-
-            },
-
-            bulanan: {
-
-                bulan: document.getElementById('exBulan')?.value || '',
-
-                tahun: document.getElementById('exTahunBulanan')?.value || ''
-
-            },
-
-            tahunan: {
-
-                tahun: document.getElementById('exTahunTahunan')?.value || ''
-
-            },
-
-            custom: {
-
-                dari: document.getElementById('exDari')?.value || '',
-
-                sampai: document.getElementById('exSampai')?.value || ''
-
+            if (exCurrentPeriod === 'harian') {
+                const selected = exFieldValue('exTanggal');
+                return selected !== '' && date === selected;
             }
-
-        };
-
-        const selectedFields = fieldMap[exCurrentPeriod] || {};
-
-        Object.entries(selectedFields).forEach(([key, value]) => {
-
-            if (value !== '') {
-
-                url.searchParams.set(key, value);
-
+            if (exCurrentPeriod === 'mingguan') {
+                const selected = exFieldValue('exMinggu');
+                return selected !== '' && exGetIsoWeek(date) === selected;
             }
-
-        });
-
-        window.location.href = url.toString();
-
-    }
-
-    document.addEventListener('DOMContentLoaded', function () {
-
-        exSyncDownloadFields();
-
-        [
-
-            'exTanggal',
-
-            'exMinggu',
-
-            'exBulan',
-
-            'exTahunBulanan',
-
-            'exTahunTahunan',
-
-            'exDari',
-
-            'exSampai'
-
-        ].forEach(id => {
-
-            const field = document.getElementById(id);
-
-            if (field) {
-
-                field.addEventListener('change', exReloadWithCurrentFilter);
-
+            if (exCurrentPeriod === 'bulanan') {
+                const month = exFieldValue('exBulan').padStart(2, '0');
+                const year = exFieldValue('exTahunBulanan');
+                return month !== '' && year !== '' && date.startsWith(`${year}-${month}-`);
             }
+            if (exCurrentPeriod === 'tahunan') {
+                const year = exFieldValue('exTahunTahunan');
+                return year !== '' && date.startsWith(`${year}-`);
+            }
+            if (exCurrentPeriod === 'custom') {
+                let from = exFieldValue('exDari');
+                let until = exFieldValue('exSampai');
+                if (!from && !until) return false;
+                if (from && until && from > until) [from, until] = [until, from];
+                return (!from || date >= from) && (!until || date <= until);
+            }
+            return false;
+        }
 
-        });
+        function exApplyCurrentFilter() {
+            const tableBody = document.querySelector('#exPreviewCard .ex-table tbody');
+            const countEl = document.getElementById('exVisibleCount');
+            const previewCountEl = document.getElementById('exPreviewCount');
+            const periodLabelEl = document.getElementById('exPeriodLabel');
+            const downloadButton = document.querySelector('#exDownloadForm .ex-download-btn');
+            const noMatchRow = document.getElementById('exNoMatchRow');
+            const rows = tableBody ? Array.from(tableBody.querySelectorAll('tr[data-export-date]')) : [];
+            let visible = 0;
 
-        const downloadForm = document.getElementById('exDownloadForm');
-
-        if (downloadForm) {
-
-            downloadForm.addEventListener('submit', function () {
-
-                exSyncDownloadFields();
-
+            rows.forEach(row => {
+                const matches = exRowMatches(row);
+                row.hidden = !matches;
+                if (matches) {
+                    visible += 1;
+                    const numberCell = row.querySelector('.ex-no-cell');
+                    if (numberCell) numberCell.textContent = String(visible);
+                }
             });
 
+            if (noMatchRow) noMatchRow.style.display = visible === 0 ? '' : 'none';
+            if (countEl) countEl.textContent = visible.toLocaleString('id-ID');
+            if (previewCountEl) previewCountEl.textContent = visible.toLocaleString('id-ID');
+            if (periodLabelEl) periodLabelEl.textContent = exCurrentLabel();
+            if (downloadButton) downloadButton.disabled = visible === 0;
+            exSyncDownloadFields();
         }
 
-        /* ==========================================================
+        // Inline onclick perlu berada di window karena halaman dirender melalui navigasi SPA.
+        window.exSwitchTab = function (name, button) {
+            if (!exAllowedPeriods.includes(name)) return;
+            exCurrentPeriod = name;
+            document.querySelectorAll('.ex-tab-btn').forEach(tab => tab.classList.remove('active'));
+            if (button) button.classList.add('active');
+            exAllowedPeriods.forEach(key => {
+                const panel = document.getElementById('ex-filter-' + key);
+                if (panel) panel.style.display = key === name ? 'flex' : 'none';
+            });
+            exApplyCurrentFilter();
+        };
 
-           PREVIEW SEMUA DATA — FULLSCREEN
+        document.addEventListener('DOMContentLoaded', function () {
+            exAllowedPeriods.forEach(period => {
+                const tab = document.querySelector(`.ex-tab-btn[onclick*="${period}"]`);
+                const panel = document.getElementById('ex-filter-' + period);
+                if (panel) panel.style.display = period === exCurrentPeriod ? 'flex' : 'none';
+                if (tab) tab.classList.toggle('active', period === exCurrentPeriod);
+            });
 
-           ========================================================== */
+            [
+                'exTanggal', 'exMinggu', 'exBulan', 'exTahunBulanan',
+                'exTahunTahunan', 'exDari', 'exSampai'
+            ].forEach(id => {
+                const field = document.getElementById(id);
+                if (field) field.addEventListener('change', exApplyCurrentFilter);
+            });
+
+            const downloadForm = document.getElementById('exDownloadForm');
+            if (downloadForm) {
+                downloadForm.addEventListener('submit', function (event) {
+                    exSyncDownloadFields();
+                    if (exCurrentPeriod === 'custom' && !exFieldValue('exDari') && !exFieldValue('exSampai')) {
+                        event.preventDefault();
+                        window.alert('Pilih minimal satu tanggal pada filter Custom.');
+                    }
+                });
+            }
+
+            exApplyCurrentFilter();
+        });
+    })();
+
+    document.addEventListener('DOMContentLoaded', function () {
 
         const fullPreviewCard = document.getElementById('exPreviewCard');
 
