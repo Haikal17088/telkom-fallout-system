@@ -2469,7 +2469,7 @@
 .adh-history-pagination{display:flex;align-items:center;gap:9px}
 .adh-history-pagination a,.adh-history-pagination .is-disabled{padding:6px 9px;border:1px solid #EAE0E1;border-radius:7px;color:#751125;text-decoration:none;background:#fff}
 .adh-history-pagination a:hover{background:#FFF3F5}.adh-history-pagination .is-disabled{color:#B7A9AC;background:#FAF8F8}.adh-page-number{font-weight:800;color:#79676C;white-space:nowrap}
-.adh-detail-overlay{display:none;position:fixed;inset:0;z-index:2147483000;align-items:center;justify-content:center;padding:18px;background:rgba(35,20,24,.42);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-sizing:border-box}
+.adh-detail-overlay{display:none;position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;min-height:100vh;z-index:2147483000;align-items:center;justify-content:center;padding:18px;background:rgba(35,20,24,.42);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-sizing:border-box}
 .adh-detail-overlay.is-open{display:flex}.adh-detail-modal{width:min(720px,100%);max-height:min(82vh,760px);overflow:auto;padding:22px;border:1px solid rgba(255,255,255,.8);border-radius:20px;background:#fff;box-shadow:0 28px 90px rgba(40,0,10,.28)}
 .adh-detail-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:18px}.adh-detail-modal-head h3{display:flex;align-items:center;gap:9px;margin:0;color:#35232A;font-size:16px;font-weight:800}.adh-detail-modal-head p{margin:6px 0 0;color:#908187;font-size:11px}
 .adh-detail-close{width:32px;height:32px;flex:none;border:0;border-radius:9px;color:#806B71;background:#F8F3F4;font-size:23px;line-height:1;cursor:pointer}
@@ -3345,6 +3345,26 @@ html.adh-history-modal-lock,body.adh-history-modal-lock{overflow:hidden!importan
     root.dataset.adhInitialized = '1';
     var overlay = document.getElementById('adhDetailOverlay');
     var closeButton = document.getElementById('adhDetailClose');
+    var overlayPlaceholder = null;
+
+    // Pindahkan modal ke body saat dibuka supaya tidak terpotong parent .content.
+    function moveOverlayToViewport(){
+        if (!overlay || overlay.parentElement === document.body) return;
+        overlayPlaceholder = document.createComment('adh-detail-overlay-placeholder');
+        overlay.parentNode.insertBefore(overlayPlaceholder, overlay);
+        document.body.appendChild(overlay);
+    }
+
+    // Kembalikan ke posisi asal setelah ditutup agar aman untuk navigasi SPA.
+    function restoreOverlayPosition(){
+        if (!overlay || !overlayPlaceholder) return;
+        if (overlayPlaceholder.parentNode){
+            overlayPlaceholder.parentNode.insertBefore(overlay, overlayPlaceholder);
+            overlayPlaceholder.remove();
+        }
+        overlayPlaceholder = null;
+    }
+
     function setText(id, value){
         var element = document.getElementById(id);
         if (element) element.textContent = value && String(value).trim() ? value : '-';
@@ -3362,6 +3382,7 @@ html.adh-history-modal-lock,body.adh-history-modal-lock{overflow:hidden!importan
         setText('adhDetailKeterangan', button.dataset.keterangan);
         setText('adhDetailDeletedBy', button.dataset.deletedBy);
         setText('adhDetailDeletedAt', button.dataset.deletedAt);
+        moveOverlayToViewport();
         overlay.classList.add('is-open');
         overlay.setAttribute('aria-hidden','false');
         document.documentElement.classList.add('adh-history-modal-lock');
@@ -3374,6 +3395,7 @@ html.adh-history-modal-lock,body.adh-history-modal-lock{overflow:hidden!importan
         overlay.setAttribute('aria-hidden','true');
         document.documentElement.classList.remove('adh-history-modal-lock');
         document.body.classList.remove('adh-history-modal-lock');
+        restoreOverlayPosition();
     }
     root.addEventListener('click', function(event){
         var button = event.target.closest('[data-adh-detail]');

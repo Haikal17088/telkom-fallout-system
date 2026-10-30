@@ -424,35 +424,27 @@
             </td>
 
             <td class="ed-aksi">
-
               <button
-
                 type="button"
-
                 class="ed-icon-btn ed-edit-btn"
-
-                title="Edit"
-
+                title="Edit data"
+                aria-label="Edit data"
               >
-
-                ✏️
-
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 20h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
               </button>
-
               <button
-
                 type="button"
-
                 class="ed-icon-btn ed-delete-btn"
-
-                title="Hapus"
-
+                title="Hapus data"
+                aria-label="Hapus data"
               >
-
-                🗑️
-
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
               </button>
-
             </td>
 
           </tr>
@@ -1253,15 +1245,16 @@
     font-size:12px;
   }
 
-  /* 8 kolom; Deskripsi tidak ditampilkan di tabel Edit Data. */
+  /* 9 kolom; lebar Aksi dihitung agar tombol edit dan hapus selalu terlihat. */
   .ed-table thead th:nth-child(1){width:4%}   /* No */
-  .ed-table thead th:nth-child(2){width:22%}  /* No/Order ID + tombol preview */
+  .ed-table thead th:nth-child(2){width:20%}  /* No/Order ID + tombol preview */
   .ed-table thead th:nth-child(3){width:8%}   /* STO */
-  .ed-table thead th:nth-child(4){width:14%}  /* Tanggal */
-  .ed-table thead th:nth-child(5){width:11%}  /* PIC */
-  .ed-table thead th:nth-child(6){width:14%}  /* Status */
-  .ed-table thead th:nth-child(7){width:15%}  /* KET */
-  .ed-table thead th:nth-child(8){width:12%}  /* Aksi */
+  .ed-table thead th:nth-child(4){width:13%}  /* Tanggal */
+  .ed-table thead th:nth-child(5){width:10%}  /* PIC */
+  .ed-table thead th:nth-child(6){width:12%}  /* Status */
+  .ed-table thead th:nth-child(7){width:13%}  /* Tiket Eskalasi */
+  .ed-table thead th:nth-child(8){width:10%}  /* KET */
+  .ed-table thead th:nth-child(9){width:10%;text-align:center}  /* Aksi */
 
   .ed-table thead th{
 
@@ -1429,31 +1422,37 @@
   }
 
   .ed-aksi{
-
     white-space:nowrap;
-
+    text-align:center;
   }
 
   .ed-icon-btn{
-
-    border:none;
-
-    background:none;
-
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:28px;
+    height:28px;
+    margin:0 1px;
+    padding:0;
+    border:1px solid #E7DEDD;
+    border-radius:7px;
+    background:#fff;
+    color:#9C0B24;
     cursor:pointer;
+    vertical-align:middle;
+    transition:background .15s ease,border-color .15s ease,color .15s ease;
+  }
 
-    font-size:14px;
-
-    padding:4px 6px;
-
-    border-radius:6px;
-
+  .ed-icon-btn svg{
+    display:block;
+    width:14px;
+    height:14px;
   }
 
   .ed-icon-btn:hover{
-
-    background:rgba(200,16,46,0.08);
-
+    background:#FFF3F5;
+    border-color:#DAB8C0;
+    color:#C8102E;
   }
 
   .ed-empty{
