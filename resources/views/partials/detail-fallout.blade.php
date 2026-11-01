@@ -799,9 +799,6 @@
                         data-status="{{ $r['status_re_filter'] }}"
                         data-sto="{{ $r['sto'] }}"
                         data-date="{{ $r['tgl_iso'] }}"
-                        data-order-id="{{ $r['order_id'] }}"
-                        data-description="{{ $r['deskripsi'] }}"
-                        data-ticket-eskalasi="{{ $r['tiket_eskalasi'] }}"
                     >
 
 
@@ -1662,6 +1659,12 @@ body.dfLoadingLock *{
    BODY
    ========================================================= */
 
+/* Optimalkan paint baris yang berada jauh di luar viewport. */
+.df-table tbody tr {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 58px;
+}
+
 .df-table tbody tr{
     height:60px;
 }
@@ -2520,7 +2523,7 @@ body.dfLoadingLock *::after {
          * Di navigasi SPA, document.readyState biasanya sudah complete.
          */
         function startLoaderTimer() {
-            window.setTimeout(hideDetailLoader, 1000);
+            window.setTimeout(hideDetailLoader, 180);
         }
 
         if (document.readyState === 'complete') {
@@ -2568,10 +2571,18 @@ body.dfLoadingLock *::after {
         );
 
 
-    const rows =
-        document.querySelectorAll(
-            '#dfTableBody tr[data-status]'
-        );
+    // Cache field values once. The table can contain thousands of rows;
+    // avoid reading/converting DOM attributes on every filter operation.
+    const rows = Array.from(
+        document.querySelectorAll('#dfTableBody tr[data-status]')
+    ).map(function (row) {
+        return {
+            element: row,
+            date: row.dataset.date || '',
+            sto: (row.dataset.sto || '').trim().toUpperCase(),
+            status: row.dataset.status || ''
+        };
+    });
 
 
     const noMatchEl =
@@ -2830,6 +2841,11 @@ body.dfLoadingLock *::after {
 
         let periodLabel = '';
 
+        const selectedDate = dfTanggal ? dfTanggal.value : '';
+        const selectedMonth = dfBulan ? dfBulan.value : '';
+        const selectedMonthYear = dfTahunBulan ? dfTahunBulan.value : '';
+        const selectedYear = dfTahunOnly ? dfTahunOnly.value : '';
+
 
         /*
         |--------------------------------------------------------------------------
@@ -2843,9 +2859,9 @@ body.dfLoadingLock *::after {
         ) {
 
             periodLabel =
-                dfTanggal.value
+                selectedDate
                     ? formatTanggalId(
-                        dfTanggal.value
+                        selectedDate
                     )
                     : '';
 
@@ -2869,7 +2885,7 @@ body.dfLoadingLock *::after {
                         : ''
                 )
                 + ' '
-                + dfTahunBulan.value;
+                + selectedMonthYear;
 
         }
 
@@ -2880,10 +2896,46 @@ body.dfLoadingLock *::after {
 
             periodLabel =
                 'Tahun '
-                + dfTahunOnly.value;
+                + selectedYear;
 
         }
 
+
+        /*
+        |--------------------------------------------------------------------------
+        | OPTIMASI TAMPILAN AWAL
+        |--------------------------------------------------------------------------
+        | Saat halaman pertama dibuka, tidak ada filter aktif. Jika belum ada
+        | baris yang disembunyikan, lewati loop 3.000 baris dan hindari menulis
+        | style satu per satu hanya untuk menampilkan semua data.
+        */
+
+        const noFilterActive =
+            statusFilter === 'semua' &&
+            !stoFilter &&
+            activeRange === 'tanggal' &&
+            !selectedDate;
+
+        if (noFilterActive) {
+            const hasHiddenRows = rows.some(function (rowData) {
+                return rowData.element.style.getPropertyValue('display') === 'none';
+            });
+
+            if (!hasHiddenRows) {
+                shown = rows.length;
+
+                if (noMatchEl) {
+                    noMatchEl.style.display = shown === 0 ? 'block' : 'none';
+                }
+
+                if (meta) {
+                    meta.textContent =
+                        'Menampilkan data · ' + periodLabel + ' · ' + shown + ' data ditemukan';
+                }
+
+                return;
+            }
+        }
 
         /*
         |--------------------------------------------------------------------------
@@ -2892,25 +2944,12 @@ body.dfLoadingLock *::after {
         */
 
         rows.forEach(
-            function (row) {
+            function (rowData) {
 
-                const rowDate =
-                    row.dataset.date
-                    || '';
-
-
-                const rowSto =
-                    String(
-                        row.dataset.sto
-                        || ''
-                    )
-                    .trim()
-                    .toUpperCase();
-
-
-                const rowStatus =
-                    row.dataset.status
-                    || '';
+                const row = rowData.element;
+                const rowDate = rowData.date;
+                const rowSto = rowData.sto;
+                const rowStatus = rowData.status;
 
 
                 let rangeMatch =
@@ -2923,10 +2962,10 @@ body.dfLoadingLock *::after {
                 ) {
 
                     rangeMatch =
-                        !dfTanggal.value
+                        !selectedDate
                         ||
                         rowDate ===
-                            dfTanggal.value;
+                            selectedDate;
 
                 }
 
@@ -2939,11 +2978,11 @@ body.dfLoadingLock *::after {
                     rangeMatch =
                         rowDate.slice(0, 4)
                             ===
-                        dfTahunBulan.value
+                        selectedMonthYear
                         &&
                         rowDate.slice(5, 7)
                             ===
-                        dfBulan.value;
+                        selectedMonth;
 
                 }
 
@@ -2956,7 +2995,7 @@ body.dfLoadingLock *::after {
                     rangeMatch =
                         rowDate.slice(0, 4)
                             ===
-                        dfTahunOnly.value;
+                        selectedYear;
 
                 }
 
@@ -2990,13 +3029,13 @@ body.dfLoadingLock *::after {
                  * Pakai setProperty(..., 'important') agar baris yang
                  * tidak cocok benar-benar tersembunyi saat filter STO.
                  */
-                row.style.setProperty(
-                    'display',
-                    visible
-                        ? 'table-row'
-                        : 'none',
-                    'important'
-                );
+                const currentDisplay = row.style.getPropertyValue('display');
+
+                if (visible && currentDisplay === 'none') {
+                    row.style.setProperty('display', 'table-row', 'important');
+                } else if (!visible && currentDisplay !== 'none') {
+                    row.style.setProperty('display', 'none', 'important');
+                }
 
 
                 if (visible) {
@@ -3125,69 +3164,48 @@ body.dfLoadingLock *::after {
 
     /*
     |--------------------------------------------------------------------------
-    | BUTTON EYE
+    | BUTTON EYE — EVENT DELEGATION
     |--------------------------------------------------------------------------
+    | Satu listener menangani semua tombol preview, termasuk ribuan baris.
     */
 
-    document
-        .querySelectorAll(
-            '.df-view-btn'
-        )
-        .forEach(
-            function (button) {
+    const dfTableBody = document.getElementById('dfTableBody');
 
-                button.addEventListener(
-                    'click',
-                    function () {
+    if (dfTableBody) {
+        dfTableBody.addEventListener('click', function (event) {
+            const button = event.target.closest('.df-view-btn');
 
-                        const row =
-                            this.closest('tr');
-
-
-                        if (!row) {
-                            return;
-                        }
-
-
-                        const previewType =
-                            this.dataset.preview;
-
-
-                        if (
-                            previewType ===
-                            'order'
-                        ) {
-
-                            openPreview(
-                                'No/Order ID Lengkap',
-                                row.dataset.orderId
-                            );
-
-                        }
-
-                        else if (previewType === 'ticket') {
-
-                            openPreview(
-                                'Tiket Eskalasi Lengkap',
-                                row.dataset.ticketEskalasi
-                            );
-
-                        }
-
-                        else {
-
-                            openPreview(
-                                'Deskripsi Lengkap',
-                                row.dataset.description
-                            );
-
-                        }
-
-                    }
-                );
-
+            if (!button || !dfTableBody.contains(button)) {
+                return;
             }
-        );
+
+            const row = button.closest('tr');
+            if (!row) {
+                return;
+            }
+
+            const previewType = button.dataset.preview || 'description';
+            const selectors = {
+                order: '.df-order-text',
+                description: '.df-description-text',
+                ticket: '.df-ticket-text'
+            };
+            const titles = {
+                order: 'No/Order ID Lengkap',
+                description: 'Deskripsi Lengkap',
+                ticket: 'Tiket Eskalasi Lengkap'
+            };
+
+            const valueElement = row.querySelector(
+                selectors[previewType] || selectors.description
+            );
+            const fullValue = valueElement
+                ? (valueElement.getAttribute('title') || valueElement.textContent || '').trim()
+                : '';
+
+            openPreview(titles[previewType] || 'Detail Lengkap', fullValue);
+        });
+    }
 
 
     /*

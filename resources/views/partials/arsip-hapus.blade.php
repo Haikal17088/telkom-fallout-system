@@ -1,307 +1,158 @@
 @php
-
-  /*
-
-  |--------------------------------------------------------------------------
-
-  | ARSIP & HAPUS DATA
-
-  |--------------------------------------------------------------------------
-
-  | Semua angka dan daftar tanggal diambil langsung dari fallout_data
-
-  | berdasarkan Witel yang sedang dibuka.
-
-  |
-
-  | Fitur yang tersedia:
-
-  | 1. Hapus Per Tanggal
-
-  | 2. Hapus Per Tahun
-
-  | 3. Ringkasan per Tahun
-
-  | 4. 10 Tanggal Terbaru
-
-  |--------------------------------------------------------------------------
-
-  */
-
-  $dbRows = \App\Models\FalloutData::forWitel($witelSlug)
-
-      ->orderByDesc('tanggal')
-
-      ->orderByDesc('row_id')
-
-      ->get()
-
-      ->toBase();
-
-  /*
-
-  |--------------------------------------------------------------------------
-
-  | DAFTAR TAHUN
-
-  |--------------------------------------------------------------------------
-
-  */
-
-  $years = $dbRows
-
-      ->filter(fn ($row) => !empty($row->tanggal))
-
-      ->map(fn ($row) => \Carbon\Carbon::parse($row->tanggal)->year)
-
-      ->unique()
-
-      ->sortDesc()
-
-      ->values();
-
-  $currentYear = (int) now()->year;
-
-  if (!$years->contains($currentYear)) {
-
-      $years->push($currentYear);
-
-  }
-
-  $years = $years
-
-      ->unique()
-
-      ->sortDesc()
-
-      ->values();
-
-  /*
-
-  |--------------------------------------------------------------------------
-
-  | TAHUN TERPILIH
-
-  |--------------------------------------------------------------------------
-
-  */
-
-  $selectedYear = (int) request()->query(
-
-      'tahun',
-
-      $currentYear
-
-  );
-
-  /*
-
-  |--------------------------------------------------------------------------
-
-  | RINGKASAN PER TAHUN
-
-  |--------------------------------------------------------------------------
-
-  */
-
-  $yearSummary = $dbRows
-
-      ->filter(fn ($row) => !empty($row->tanggal))
-
-      ->groupBy(
-
-          fn ($row) =>
-
-              \Carbon\Carbon::parse(
-
-                  $row->tanggal
-
-              )->year
-
-      )
-
-      ->map(
-
-          fn ($group) =>
-
-              $group->count()
-
-      )
-
-      ->sortKeysDesc();
-
-  $selectedYearCount =
-
-      (int) (
-
-          $yearSummary[$selectedYear]
-
-          ?? 0
-
-      );
-
-  /*
-
-  |--------------------------------------------------------------------------
-
-  | TOTAL DATA WITEL
-
-  |--------------------------------------------------------------------------
-
-  */
-
-  $totalWitelData =
-
-      $dbRows->count();
-
-  /*
-
-  |--------------------------------------------------------------------------
-
-  | 10 TANGGAL TERBARU
-
-  |--------------------------------------------------------------------------
-
-  */
-
-  $allDateCounts = $dbRows
-      ->filter(fn ($row) => !empty($row->tanggal))
-      ->groupBy(function ($row) {
-          return \Carbon\Carbon::parse($row->tanggal)->format('Y-m-d');
-      })
-      ->map(fn ($group) => $group->count())
-      ->sortKeysDesc();
-
-  // Ringkasan di layar tetap menampilkan 10 tanggal terbaru.
-  $latestDates = $allDateCounts->take(10);
-
-  /*
-
-  |--------------------------------------------------------------------------
-
-  | TANGGAL YANG DIPILIH UNTUK HAPUS
-
-  |--------------------------------------------------------------------------
-
-  */
-
-  $selectedTanggal =
-
-      (string) request()->query(
-
-          'tanggal',
-
-          ''
-
-      );
-
-  $selectedTanggalCount = 0;
-
-  if ($selectedTanggal !== '') {
-
-      $selectedTanggalCount =
-
-          $dbRows
-
-              ->filter(
-
-                  function ($row) use (
-
-                      $selectedTanggal
-
-                  ) {
-
-                      if (!$row->tanggal) {
-
-                          return false;
-
-                      }
-
-                      return \Carbon\Carbon::parse(
-
-                          $row->tanggal
-
-                      )->format('Y-m-d')
-
-                      ===
-
-                      $selectedTanggal;
-
-                  }
-
-              )
-
-              ->count();
-
-  }
-
-  /*
-
-  |--------------------------------------------------------------------------
-
-  | FORMAT TANGGAL
-
-  |--------------------------------------------------------------------------
-
-  */
-
-  $formatDate =
-
-      function ($date) {
-
-          if (!$date) {
-
-              return '-';
-
-          }
-
-          return \Carbon\Carbon::parse(
-
-              $date
-
-          )->translatedFormat(
-
-              'd F Y'
-
-          );
-
-      };
-
-
-
-  // RIWAYAT DATA DIHAPUS: bagian ini hanya membaca tabel audit jika migrasi sudah dijalankan.
-  $adhSearch = trim((string) request()->query('riwayat_cari', ''));
-  $adhHistoryReady = \Illuminate\Support\Facades\Schema::hasTable('deleted_fallout_histories');
-  $adhHistory = null;
-  $adhHistoryTotal = 0;
-
-  if ($adhHistoryReady) {
-      $adhWitelSlug = \Illuminate\Support\Str::lower(trim((string) $witelSlug));
-      $adhHistoryTotal = \Illuminate\Support\Facades\DB::table('deleted_fallout_histories')
-          ->where('witel_slug', $adhWitelSlug)
-          ->count();
-
-      $adhQuery = \Illuminate\Support\Facades\DB::table('deleted_fallout_histories')
-          ->where('witel_slug', $adhWitelSlug);
-
-      if ($adhSearch !== '') {
-          $adhLike = '%' . mb_strtolower($adhSearch) . '%';
-          $adhQuery->where(function ($query) use ($adhLike) {
-              $query->whereRaw("LOWER(COALESCE(order_id, '')) LIKE ?", [$adhLike])
-                  ->orWhereRaw("LOWER(COALESCE(sto, '')) LIKE ?", [$adhLike])
-                  ->orWhereRaw("LOWER(COALESCE(pic, '')) LIKE ?", [$adhLike])
-                  ->orWhereRaw("LOWER(COALESCE(tiket_eskalasi, '')) LIKE ?", [$adhLike])
-                  ->orWhereRaw("LOWER(COALESCE(deleted_by_name, '')) LIKE ?", [$adhLike]);
-          });
-      }
-
-      $adhHistory = $adhQuery
-          ->orderByDesc('deleted_at')
-          ->orderByDesc('history_id')
-          ->paginate(10, ['*'], 'riwayat_page')
-          ->withQueryString();
-  }
-
+    /*
+    |--------------------------------------------------------------------------
+    | ARSIP & HAPUS — QUERY RINGKASAN RINGAN
+    |--------------------------------------------------------------------------
+    | Semua jumlah dihitung oleh database. Tidak mengambil seluruh baris
+    | fallout_data ke memory PHP hanya untuk membuat ringkasan.
+    */
+
+    $archiveBaseQuery = \App\Models\FalloutData::forWitel($witelSlug);
+
+    /* DAFTAR TAHUN DAN JUMLAH DATA PER TAHUN */
+    $yearRows = (clone $archiveBaseQuery)
+        ->whereNotNull('tanggal')
+        ->selectRaw('EXTRACT(YEAR FROM tanggal) AS tahun, COUNT(*) AS total')
+        ->groupByRaw('EXTRACT(YEAR FROM tanggal)')
+        ->orderByDesc('tahun')
+        ->get();
+
+    $yearSummary = collect($yearRows)->mapWithKeys(function ($row) {
+        return [(int) $row->tahun => (int) $row->total];
+    });
+
+    $currentYear = (int) now()->year;
+    $years = $yearSummary->keys()->map(fn ($year) => (int) $year)->sortDesc()->values();
+
+    if (!$years->contains($currentYear)) {
+        $years->push($currentYear);
+    }
+
+    $years = $years->unique()->sortDesc()->values();
+
+    $selectedYear = (int) request()->query('tahun', $currentYear);
+    if ($selectedYear < 1900 || $selectedYear > 2200) {
+        $selectedYear = $currentYear;
+    }
+
+    $selectedYearCount = (int) ($yearSummary[$selectedYear] ?? 0);
+
+    /* JUMLAH TANGGAL UNIK PADA TAHUN TERPILIH */
+    $selectedYearUniqueDates = (int) ((clone $archiveBaseQuery)
+        ->whereYear('tanggal', $selectedYear)
+        ->whereNotNull('tanggal')
+        ->selectRaw('COUNT(DISTINCT DATE(tanggal)) AS total')
+        ->value('total') ?? 0);
+
+    /* TOTAL DATA WITEL */
+    $totalWitelData = (int) (clone $archiveBaseQuery)->count();
+
+    /* JUMLAH DATA PER TANGGAL — HANYA SATU BARIS PER TANGGAL */
+    $dateCountRows = (clone $archiveBaseQuery)
+        ->whereNotNull('tanggal')
+        ->selectRaw('DATE(tanggal) AS tanggal_hari, COUNT(*) AS total')
+        ->groupByRaw('DATE(tanggal)')
+        ->orderByDesc('tanggal_hari')
+        ->get();
+
+    $allDateCounts = collect($dateCountRows)->mapWithKeys(function ($row) {
+        return [(string) $row->tanggal_hari => (int) $row->total];
+    });
+
+    $latestDates = $allDateCounts->take(10);
+    $totalUniqueDates = $allDateCounts->count();
+
+    /* HITUNG DATA PADA TANGGAL YANG DIPILIH */
+    $selectedTanggal = trim((string) request()->query('tanggal', ''));
+    $selectedDateObject = $selectedTanggal !== ''
+        ? \DateTime::createFromFormat('!Y-m-d', $selectedTanggal)
+        : false;
+
+    if (
+        !$selectedDateObject ||
+        $selectedDateObject->format('Y-m-d') !== $selectedTanggal
+    ) {
+        $selectedTanggal = '';
+    }
+
+    $selectedTanggalCount = 0;
+    if ($selectedTanggal !== '') {
+        $selectedTanggalCount = (int) (clone $archiveBaseQuery)
+            ->whereDate('tanggal', $selectedTanggal)
+            ->count();
+    }
+
+    /* FORMAT TANGGAL */
+    $formatDate = function ($date) {
+        if (!$date) {
+            return '-';
+        }
+
+        try {
+            return \Carbon\Carbon::parse($date)->translatedFormat('d F Y');
+        } catch (\Throwable $e) {
+            return '-';
+        }
+    };
+
+    /* RIWAYAT DATA DIHAPUS — TABEL DAN KOLOM TIKET BISA BELUM DIMIGRASI */
+    $adhSearch = trim((string) request()->query('riwayat_cari', ''));
+    $adhHistory = null;
+    $adhHistoryTotal = 0;
+    $adhHistoryReady = false;
+    $adhHistoryTicketReady = false;
+
+    try {
+        $adhHistoryReady = \Illuminate\Support\Facades\Schema::hasTable('deleted_fallout_histories');
+
+        if ($adhHistoryReady) {
+            $adhHistoryTicketReady = \Illuminate\Support\Facades\Schema::hasColumn(
+                'deleted_fallout_histories',
+                'tiket_eskalasi'
+            );
+        }
+    } catch (\Throwable $schemaError) {
+        // Kegagalan pemeriksaan skema tidak boleh merusak halaman utama Arsip.
+        report($schemaError);
+        $adhHistoryReady = false;
+        $adhHistoryTicketReady = false;
+    }
+
+    if ($adhHistoryReady) {
+        $adhWitelSlug = \Illuminate\Support\Str::lower(trim((string) $witelSlug));
+
+        $adhHistoryBaseQuery = \Illuminate\Support\Facades\DB::table('deleted_fallout_histories')
+            ->where('witel_slug', $adhWitelSlug);
+
+        $adhHistoryTotal = (clone $adhHistoryBaseQuery)->count();
+        $adhQuery = clone $adhHistoryBaseQuery;
+
+        if ($adhSearch !== '') {
+            $adhLike = '%' . mb_strtolower($adhSearch) . '%';
+
+            $adhQuery->where(function ($query) use ($adhLike, $adhHistoryTicketReady) {
+                $query
+                    ->whereRaw("LOWER(COALESCE(order_id, '')) LIKE ?", [$adhLike])
+                    ->orWhereRaw("LOWER(COALESCE(sto, '')) LIKE ?", [$adhLike])
+                    ->orWhereRaw("LOWER(COALESCE(pic, '')) LIKE ?", [$adhLike])
+                    ->orWhereRaw("LOWER(COALESCE(deleted_by_name, '')) LIKE ?", [$adhLike]);
+
+                // Kolom ini hanya dipanggil jika migration tiket sudah diterapkan.
+                if ($adhHistoryTicketReady) {
+                    $query->orWhereRaw(
+                        "LOWER(COALESCE(tiket_eskalasi, '')) LIKE ?",
+                        [$adhLike]
+                    );
+                }
+            });
+        }
+
+        $adhHistory = $adhQuery
+            ->orderByDesc('deleted_at')
+            ->orderByDesc('history_id')
+            ->paginate(10, ['*'], 'riwayat_page')
+            ->withQueryString();
+    }
 @endphp
 
 <div class="ah-wrap">
@@ -832,27 +683,7 @@
 
             @if($selectedYearCount > 0)
 
-              ({{ count(
-
-                $dbRows
-
-                  ->filter(function ($row) use ($selectedYear) {
-
-                      return $row->tanggal
-
-                        && \Carbon\Carbon::parse($row->tanggal)->year == $selectedYear;
-
-                  })
-
-                  ->groupBy(function ($row) {
-
-                      return \Carbon\Carbon::parse($row->tanggal)->format('Y-m-d');
-
-                  })
-
-                  ->keys()
-
-              ) }} tanggal)
+              ({{ number_format($selectedYearUniqueDates, 0, ',', '.') }} tanggal)
 
             @endif
 
@@ -1037,45 +868,7 @@
           <div class="ah-more-date">
 
             @php
-
-              $totalUniqueDates =
-
-                  $dbRows
-
-                      ->filter(
-
-                          fn ($row) =>
-
-                              !empty($row->tanggal)
-
-                      )
-
-                      ->map(
-
-                          fn ($row) =>
-
-                              \Carbon\Carbon::parse(
-
-                                  $row->tanggal
-
-                              )->format('Y-m-d')
-
-                      )
-
-                      ->unique()
-
-                      ->count();
-
-              $otherDates =
-
-                  max(
-
-                      $totalUniqueDates - 10,
-
-                      0
-
-                  );
-
+              $otherDates = max($totalUniqueDates - 10, 0);
             @endphp
 
             @if($otherDates > 0)
@@ -1174,7 +967,7 @@
                     data-status="{{ $history->status ?: '-' }}"
                     data-deskripsi="{{ $history->deskripsi ?: '-' }}"
                     data-keterangan="{{ $history->ket ?: '-' }}"
-                    data-ticket-eskalasi="{{ $history->tiket_eskalasi ?: '-' }}"
+                    data-ticket-eskalasi="{{ $adhHistoryTicketReady ? ($history->tiket_eskalasi ?? '-') : '-' }}"
                     data-deleted-by="{{ $history->deleted_by_name ?: 'System' }}"
                     data-deleted-at="{{ \Carbon\Carbon::parse($history->deleted_at)->translatedFormat('d/m/Y, H.i') }}">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.8"/></svg>
