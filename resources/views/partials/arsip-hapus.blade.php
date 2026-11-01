@@ -290,6 +290,7 @@
               $query->whereRaw("LOWER(COALESCE(order_id, '')) LIKE ?", [$adhLike])
                   ->orWhereRaw("LOWER(COALESCE(sto, '')) LIKE ?", [$adhLike])
                   ->orWhereRaw("LOWER(COALESCE(pic, '')) LIKE ?", [$adhLike])
+                  ->orWhereRaw("LOWER(COALESCE(tiket_eskalasi, '')) LIKE ?", [$adhLike])
                   ->orWhereRaw("LOWER(COALESCE(deleted_by_name, '')) LIKE ?", [$adhLike]);
           });
       }
@@ -1173,6 +1174,7 @@
                     data-status="{{ $history->status ?: '-' }}"
                     data-deskripsi="{{ $history->deskripsi ?: '-' }}"
                     data-keterangan="{{ $history->ket ?: '-' }}"
+                    data-ticket-eskalasi="{{ $history->tiket_eskalasi ?: '-' }}"
                     data-deleted-by="{{ $history->deleted_by_name ?: 'System' }}"
                     data-deleted-at="{{ \Carbon\Carbon::parse($history->deleted_at)->translatedFormat('d/m/Y, H.i') }}">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.8"/></svg>
@@ -1214,6 +1216,7 @@
         <div class="adh-detail-field"><span>STATUS</span><strong id="adhDetailStatus">-</strong></div>
         <div class="adh-detail-field adh-detail-field-wide"><span>DESKRIPSI</span><strong id="adhDetailDeskripsi">-</strong></div>
         <div class="adh-detail-field adh-detail-field-wide"><span>KETERANGAN</span><strong id="adhDetailKeterangan">-</strong></div>
+        <div class="adh-detail-field adh-detail-field-wide"><span>TIKET ESKALASI</span><strong id="adhDetailTicketEskalasi">-</strong></div>
         <div class="adh-detail-field"><span>DIHAPUS OLEH</span><strong id="adhDetailDeletedBy">-</strong></div>
         <div class="adh-detail-field"><span>WAKTU PENGHAPUSAN</span><strong id="adhDetailDeletedAt">-</strong></div>
       </div>
@@ -3171,6 +3174,7 @@ html.adh-history-modal-lock,body.adh-history-modal-lock{overflow:hidden!importan
         setText('adhDetailStatus', button.dataset.status);
         setText('adhDetailDeskripsi', button.dataset.deskripsi);
         setText('adhDetailKeterangan', button.dataset.keterangan);
+        setText('adhDetailTicketEskalasi', button.dataset.ticketEskalasi);
         setText('adhDetailDeletedBy', button.dataset.deletedBy);
         setText('adhDetailDeletedAt', button.dataset.deletedAt);
         moveOverlayToViewport();

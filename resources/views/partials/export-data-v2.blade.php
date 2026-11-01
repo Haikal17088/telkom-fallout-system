@@ -758,6 +758,8 @@
 
                         <col class="ex-col-status">
 
+                        <col class="ex-col-ticket">
+
                         <col class="ex-col-ket">
 
                     </colgroup>
@@ -781,6 +783,8 @@
                             <th>RESOLVED/ESKALASI</th>
 
                             <th>Status</th>
+
+                            <th>Tiket Eskalasi</th>
 
                             <th>KET</th>
 
@@ -1009,15 +1013,32 @@
                                 </td>
 
                                 <td class="ex-single-line">
+                                    {{ $r->status ?: '-' }}
+                                </td>
 
-                                    {{ $r->status }}
-
+                                <td class="ex-ticket-cell">
+                                    <div class="ex-detail-preview-line">
+                                        <span
+                                            class="ex-detail-order-text"
+                                            title="{{ $r->tiket_eskalasi ?: '-' }}"
+                                        >
+                                            {{ $r->tiket_eskalasi ?: '-' }}
+                                        </span>
+                                        @if (!empty($r->tiket_eskalasi))
+                                            <button
+                                                type="button"
+                                                class="ex-detail-view-btn"
+                                                data-preview-type="ticket"
+                                                data-preview-value="{{ $r->tiket_eskalasi }}"
+                                                title="Lihat Tiket Eskalasi lengkap"
+                                                aria-label="Lihat Tiket Eskalasi lengkap"
+                                            >Lihat</button>
+                                        @endif
+                                    </div>
                                 </td>
 
                                 <td class="ex-single-line">
-
-                                    {{ $r->ket }}
-
+                                    {{ $r->ket ?: '-' }}
                                 </td>
 
                             </tr>
@@ -1025,7 +1046,7 @@
                         @endforeach
 
                         <tr id="exNoMatchRow" style="display:none;">
-                            <td colspan="9" class="ex-empty">Tidak ada data yang cocok dengan filter ini.</td>
+                            <td colspan="10" class="ex-empty">Tidak ada data yang cocok dengan filter ini.</td>
                         </tr>
 
                     </tbody>
@@ -1496,7 +1517,7 @@
 
     }
 
-    .ex-full-overlay table.ex-table{ min-width:1180px; }
+    .ex-full-overlay table.ex-table{ min-width:1486px; }
 
     .ex-full-overlay table.ex-table thead th{ position:sticky; top:0; z-index:3; }
 
@@ -1506,7 +1527,7 @@
 
     .ex-table-scroll{ overflow-x:auto; border-radius:10px; }
 
-    table.ex-table{ width:100%; border-collapse:separate; border-spacing:0; min-width:1120px; table-layout:fixed; }
+    table.ex-table{ width:100%; border-collapse:separate; border-spacing:0; min-width:1486px; table-layout:fixed; }
 
     table.ex-table .ex-col-no{ width:54px; }
 
@@ -1523,6 +1544,8 @@
     table.ex-table .ex-col-resolved{ width:165px; }
 
     table.ex-table .ex-col-status{ width:105px; }
+
+    table.ex-table .ex-col-ticket{ width:180px; }
 
     table.ex-table .ex-col-ket{ width:100px; }
 
@@ -1701,6 +1724,10 @@
     }
 
     .ex-resolved{ color:#1F8A4C; font-weight:700; }
+
+    .ex-ticket-cell{ overflow:hidden; }
+    .ex-ticket-cell .ex-detail-order-text{ color:#7A0C0C; font-family:monospace; font-size:11.5px; }
+    .ex-ticket-cell .ex-detail-view-btn{ width:auto; min-width:42px; padding:0 7px; font-size:10px; font-weight:700; }
 
     /* ==========================================================
 
@@ -2246,11 +2273,11 @@
 
             if (!previewModal || !previewTitle || !previewValue) return;
 
-            previewTitle.textContent = type === 'message'
-
-                ? 'Status Message Lengkap'
-
-                : 'Order ID Lengkap';
+            previewTitle.textContent = type === 'ticket'
+                ? 'Tiket Eskalasi Lengkap'
+                : (type === 'message'
+                    ? 'Status Message Lengkap'
+                    : 'Order ID Lengkap');
 
             previewValue.textContent = value || '-';
 

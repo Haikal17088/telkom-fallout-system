@@ -801,6 +801,7 @@
                         data-date="{{ $r['tgl_iso'] }}"
                         data-order-id="{{ $r['order_id'] }}"
                         data-description="{{ $r['deskripsi'] }}"
+                        data-ticket-eskalasi="{{ $r['tiket_eskalasi'] }}"
                     >
 
 
@@ -1067,7 +1068,28 @@
 
                         {{-- TIKET ESKALASI --}}
                         <td class="df-ticket-cell">
-                            {{ $r['tiket_eskalasi'] ?: '-' }}
+                            <div class="df-preview-line df-ticket-preview-line">
+                                <span
+                                    class="df-ticket-text"
+                                    title="{{ $r['tiket_eskalasi'] ?: '-' }}"
+                                >
+                                    {{ $r['tiket_eskalasi'] ?: '-' }}
+                                </span>
+                                @if (!empty($r['tiket_eskalasi']))
+                                    <button
+                                        type="button"
+                                        class="df-view-btn"
+                                        data-preview="ticket"
+                                        title="Lihat Tiket Eskalasi lengkap"
+                                        aria-label="Lihat Tiket Eskalasi lengkap"
+                                    >
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                            <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.8"/>
+                                        </svg>
+                                    </button>
+                                @endif
+                            </div>
                         </td>
 
 
@@ -2366,6 +2388,38 @@ body.dfLoadingLock *::after {
     pointer-events: none !important;
 }
 
+
+
+/* =========================================================
+   TABEL DETAIL FALLOUT — KOLOM TIKET ESKALASI DIPERJELAS
+   Gunakan scroll horizontal supaya kolom tidak dipaksa terlalu sempit.
+   ========================================================= */
+.df-wrap .df-table-wrap {
+    overflow-x: auto !important;
+    overflow-y: auto !important;
+    max-width: 100% !important;
+}
+.df-wrap .df-table {
+    width: 100% !important;
+    min-width: 1500px !important;
+    max-width: none !important;
+    table-layout: fixed !important;
+}
+.df-wrap .df-table th:nth-child(1), .df-wrap .df-table td:nth-child(1) { width: 4% !important; }
+.df-wrap .df-table th:nth-child(2), .df-wrap .df-table td:nth-child(2) { width: 13% !important; }
+.df-wrap .df-table th:nth-child(3), .df-wrap .df-table td:nth-child(3) { width: 20% !important; }
+.df-wrap .df-table th:nth-child(4), .df-wrap .df-table td:nth-child(4) { width: 6% !important; }
+.df-wrap .df-table th:nth-child(5), .df-wrap .df-table td:nth-child(5) { width: 10% !important; }
+.df-wrap .df-table th:nth-child(6), .df-wrap .df-table td:nth-child(6) { width: 8% !important; }
+.df-wrap .df-table th:nth-child(7), .df-wrap .df-table td:nth-child(7) { width: 11% !important; }
+.df-wrap .df-table th:nth-child(8), .df-wrap .df-table td:nth-child(8) { width: 9% !important; }
+.df-wrap .df-table th:nth-child(9), .df-wrap .df-table td:nth-child(9) { width: 11% !important; }
+.df-wrap .df-table th:nth-child(10), .df-wrap .df-table td:nth-child(10) { width: 8% !important; }
+.df-wrap .df-ticket-cell { min-width: 0 !important; overflow: hidden !important; }
+.df-wrap .df-ticket-preview-line { width: 100% !important; min-width: 0 !important; display: flex !important; align-items: center !important; gap: 6px !important; }
+.df-wrap .df-ticket-text { display: block !important; flex: 1 1 auto !important; min-width: 0 !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; color: #6F2637 !important; font-size: 10px !important; }
+.df-wrap .df-ticket-preview-line .df-view-btn { flex: 0 0 22px !important; }
+
 </style>
 
 
@@ -3107,6 +3161,15 @@ body.dfLoadingLock *::after {
                             openPreview(
                                 'No/Order ID Lengkap',
                                 row.dataset.orderId
+                            );
+
+                        }
+
+                        else if (previewType === 'ticket') {
+
+                            openPreview(
+                                'Tiket Eskalasi Lengkap',
+                                row.dataset.ticketEskalasi
                             );
 
                         }

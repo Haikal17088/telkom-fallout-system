@@ -2010,6 +2010,24 @@ body{background:#F5F6F8;}
 .table-wrap table{border-radius:12px;}
 @media(max-width:900px){.page-head{align-items:stretch;}.filter-actions{width:100%;}.filter-reset{flex:1;}.page-head-actions{width:100%;}.btn-download,.btn-refresh{flex:1;}}
 
+
+
+/* Tambahan ruang untuk field Tiket Eskalasi pada popup detail. */
+.rf-detail-dialog {
+    width: min(560px, 96vw);
+    max-height: 90vh;
+}
+.rf-detail-body {
+    min-height: 0;
+    overflow-y: auto;
+}
+.rf-detail-ticket {
+    border: 1px solid #F0E2E5;
+    background: #FFF8F9;
+    color: #7B1830;
+    overflow-wrap: anywhere;
+}
+
 </style>
 
 
@@ -3034,6 +3052,7 @@ body{background:#F5F6F8;}
                                 data-status="{{ $detailLabel ?: '-' }}"
                                 data-description="{{ $row->deskripsi ?? '-' }}"
                                 data-ket="{{ $row->ket ?? '-' }}"
+                                data-ticket-eskalasi="{{ $row->tiket_eskalasi ?? '-' }}"
                                 onclick="rfOpenDetail(this)"
                             >
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -3252,6 +3271,11 @@ body{background:#F5F6F8;}
             <div class="rf-detail-section">
                 <div class="rf-detail-section-label">Deskripsi Lengkap</div>
                 <div class="rf-detail-box" id="rfDetailDescription">-</div>
+            </div>
+
+            <div class="rf-detail-section">
+                <div class="rf-detail-section-label">Tiket Eskalasi</div>
+                <div class="rf-detail-box rf-detail-ticket" id="rfDetailTicketEskalasi">-</div>
             </div>
 
             <div class="rf-detail-section">
@@ -4477,6 +4501,7 @@ function rfOpenDetail(button){
     setText('rfDetailResolved', button.dataset.resolved);
     setText('rfDetailStatus', button.dataset.status);
     setText('rfDetailDescription', button.dataset.description);
+    setText('rfDetailTicketEskalasi', button.dataset.ticketEskalasi);
     setText('rfDetailKet', button.dataset.ket);
 
     modal.classList.add('is-open');

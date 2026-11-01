@@ -31,6 +31,7 @@ final class FalloutDeletionHistoryRecorder
                 'resolved_eskalasi' => $row->resolved_eskalasi ?? null,
                 'status' => $row->status ?? null,
                 'ket' => $row->ket ?? null,
+                'tiket_eskalasi' => $row->tiket_eskalasi ?? null,
                 'deleted_by' => $user?->getAuthIdentifier(),
                 'deleted_by_name' => Str::limit((string) $deletedByName, 191, ''),
                 'delete_source' => Str::limit($source, 40, ''),
